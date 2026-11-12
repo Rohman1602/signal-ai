@@ -1,40 +1,30 @@
 import os
 import requests
-import google.generativeai as genai
 
-# Konfigurasi Kunci
+# Kredensial
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-3.8-flash')
-
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
-    requests.post(url, json=payload)
+    try:
+        # Timeout 10 detik
+        requests.post(url, json=payload, timeout=10)
+    except:
+        pass
 
 def fetch_market_data():
-    # Menggunakan CoinGecko API Publik (Anti-Blokir Server US)
-    # Menarik harga Solana (SOL) terhadap USD
     url = "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_vol=true"
+    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Bot/1.0'}
     
-    headers = {
-        'Accept': 'application/json',
-        'User-Agent': 'Argon-Bot/1.0'
-    }
-    
-    response = requests.get(url, headers=headers)
-    
+    # Tambahkan timeout 10 detik agar tidak macet menunggu server
+    response = requests.get(url, headers=headers, timeout=10)
     if response.status_code != 200:
-        raise Exception(f"Gagal mengambil data market. Status: {response.status_code}")
-        
+        raise Exception(f"Gagal akses harga dari CoinGecko: {response.status_code}")
     data = response.json()
-    current_price = data['solana']['usd']
-    volume_24h = data['solana']['usd_24h_vol']
-    
-    return current_price, volume_24h
+    return data['solana']['usd'], data['solana']['usd_24h_vol']
 
 def analyze_market_with_ai(current_price, volume_24h):
     prompt = f"""
@@ -48,23 +38,31 @@ def analyze_market_with_ai(current_price, volume_24h):
     Output format strictly JSON:
     {{"signal": "WAIT" or "LONG" or "SHORT", "entry_price": {current_price}, "take_profit": <number>, "stop_loss": <number>, "reasoning": "<short text>"}}
     """
-    try:
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f'{{"signal": "ERROR", "reasoning": "Gemini API Error: {str(e)}"}}'
+    
+    # Menghubungi Gemini langsung via REST API (Tanpa pustaka Google lama)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    
+    # Timeout 15 detik. Jika AI tidak menjawab dalam 15 detik, proses digagalkan bukan dibiarkan macet.
+    response = requests.post(url, headers=headers, json=payload, timeout=15)
+    response_data = response.json()
+    
+    if response.status_code != 200:
+        raise Exception(f"Gemini API Error: {response_data}")
+        
+    return response_data['candidates'][0]['content']['parts'][0]['text']
 
 if __name__ == "__main__":
-    print("Memulai pemindaian market (CoinGecko Route)...")
+    print("Memulai pemindaian market (Mode Ringan REST API)...")
     try:
-        # Menarik data harga
         price, vol = fetch_market_data()
-        print(f"Berhasil mendapat harga: {price}")
+        print(f"Harga didapat: ${price}")
         
-        # Menganalisa dengan Gemini
         ai_result = analyze_market_with_ai(price, vol)
         
-        # Mengirim ke Telegram
         msg = f"🚨 *Argon Signal Update*\n\n```json\n{ai_result}\n```\nLive Trading: `OFF`"
         send_telegram_message(msg)
         print("Selesai. Pesan berhasil dikirim ke Telegram.")
