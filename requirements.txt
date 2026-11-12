@@ -1,5 +1,1 @@
 requests
-google-generativeai
-pandas
-numpy
-ta
