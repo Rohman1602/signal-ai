@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import requests
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -17,14 +18,13 @@ def load_config():
         "live_trading": False,
         "tp": 0.60,
         "sl": 0.23,
-        "strategy": "Trending: EMA 9 + Volume. Sideways: Bollinger Bands + SMI. Konfirmasi struktur HH/HL/LH/LL.",
+        "strategy": "1. Trending: Gunakan EMA 9 dynamic support/resistance dan momentum volume (Pullback Rejection atau Pivot Breakout). 2. Sideways/Ranging: Gunakan pantulan Bollinger Bands dan area ekstrem Stochastic Momentum Index (SMI). 3. Konfirmasi Market Structure (HH/HL untuk LONG, LH/LL untuk SHORT). Jika di zona tanggung/tidak jelas, pilih WAIT.",
         "last_update_id": 0
     }
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r") as f:
-                data = json.load(f)
-                default_cfg.update(data)
+                default_cfg.update(json.load(f))
         except Exception:
             pass
     return default_cfg
@@ -57,7 +57,7 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON BOT*"):
         f"• *Take Profit (TP):* `+{cfg['tp']} poin`\n"
         f"• *Stop Loss (SL):* `-{cfg['sl']} poin`\n"
         f"• *Strategi Aktif:*\n_{cfg['strategy']}_\n\n"
-        f"Pilih tombol di bawah atau kirim perintah teks:"
+        f"_(Catatan: Karena memakai server terjadwal GitHub, klik tombol akan direspons saat siklus 5 menit berikutnya berjalan)_"
     )
     
     keyboard = {
@@ -90,18 +90,18 @@ def process_telegram_commands(cfg):
     for update in res.get("result", []):
         cfg["last_update_id"] = update["update_id"]
         
-        # 1. Cek jika user menekan Tombol Menu (Callback Query)
         if "callback_query" in update:
             cb = update["callback_query"]
-            sender_id = str(cb["from"]["id"])
-            if sender_id != TELEGRAM_CHAT_ID:
+            if str(cb["from"]["id"]) != TELEGRAM_CHAT_ID:
                 continue
                 
-            # Hentikan animasi loading pada tombol Telegram
-            requests.post(
-                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery",
-                json={"callback_query_id": cb["id"]}, timeout=10
-            )
+            try:
+                requests.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery",
+                    json={"callback_query_id": cb["id"]}, timeout=10
+                )
+            except Exception:
+                pass
             
             action = cb.get("data", "")
             if action == "toggle_trading":
@@ -118,17 +118,15 @@ def process_telegram_commands(cfg):
                     "• `/sl 0.25` — Mengubah batas Stop Loss\n"
                     "• `/trading on` atau `/trading off` — Saklar Live Trading\n"
                     "• `/strategi [aturan baru]` — Mengganti logika indikator AI\n\n"
-                    "_Catatan: Perintah diproses otomatis mengikuti jadwal cek server setiap 5 menit._"
+                    "_Perintah diproses otomatis pada siklus jadwal 5 menit berikutnya._"
                 )
                 send_telegram(help_text)
             elif action == "scan_now":
-                send_telegram("⏳ *Memulai pemindaian market manual...*")
+                send_telegram("⏳ *Memproses permintaan Cek Sinyal...*")
 
-        # 2. Cek jika user mengirim Perintah Teks
         elif "message" in update and "text" in update["message"]:
             msg = update["message"]
-            sender_id = str(msg["chat"]["id"])
-            if sender_id != TELEGRAM_CHAT_ID:
+            if str(msg["chat"]["id"]) != TELEGRAM_CHAT_ID:
                 continue
                 
             text = msg["text"].strip()
@@ -167,36 +165,75 @@ def process_telegram_commands(cfg):
 
     return cfg
 
+def calc_ema(values, period):
+    k = 2 / (period + 1)
+    ema = values[0]
+    for v in values[1:]:
+        ema = v * k + ema * (1 - k)
+    return round(ema, 3)
+
 def fetch_market_data():
     headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Bot/1.0'}
     
+    # 1. Jalur Utama: Binance Public Market Data (Bebas blokir US & menyediakan candle 5m asli)
+    try:
+        b_url = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=5m&limit=35"
+        res = requests.get(b_url, headers=headers, timeout=15)
+        if res.status_code == 200:
+            klines = res.json()
+            if isinstance(klines, list) and len(klines) >= 20:
+                highs = [float(k[2]) for k in klines]
+                lows = [float(k[3]) for k in klines]
+                closes = [float(k[4]) for k in klines]
+                vols = [round(float(k[5]), 1) for k in klines]
+                
+                current_price = closes[-1]
+                ema9 = calc_ema(closes, 9)
+                ema21 = calc_ema(closes, 21)
+                
+                # Bollinger Bands (20, 2)
+                win20 = closes[-20:]
+                bb_mid = sum(win20) / 20
+                std_dev = (sum((x - bb_mid) ** 2 for x in win20) / 20) ** 0.5
+                bb_upper = round(bb_mid + 2 * std_dev, 3)
+                bb_lower = round(bb_mid - 2 * std_dev, 3)
+                bb_mid = round(bb_mid, 3)
+                
+                # Stochastic Momentum Index (14)
+                hh14 = max(highs[-14:])
+                ll14 = min(lows[-14:])
+                hl_range = hh14 - ll14
+                smi = round(((current_price - (hh14 + ll14) / 2) / (hl_range / 2)) * 100, 1) if hl_range > 0 else 0.0
+                
+                last_candles = [
+                    {"o": round(float(k[1]), 2), "h": round(float(k[2]), 2), "l": round(float(k[3]), 2), "c": round(float(k[4]), 2), "v": round(float(k[5]), 0)}
+                    for k in klines[-8:]
+                ]
+                
+                summary = (
+                    f"Source: Binance 5m Real-Time | Price: ${current_price}\n"
+                    f"Indicators -> EMA 9: ${ema9} | EMA 21: ${ema21} | BB Upper: ${bb_upper}, Mid: ${bb_mid}, Lower: ${bb_lower} | SMI(14): {smi}\n"
+                    f"Last 8 Candles (5m): {json.dumps(last_candles)}"
+                )
+                return current_price, summary
+    except Exception as e:
+        print(f"Binance Vision fallback ke CoinGecko: {e}")
+
+    # 2. Jalur Cadangan: CoinGecko
     price_url = "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_vol=true"
     res_price = requests.get(price_url, headers=headers, timeout=15)
     if res_price.status_code != 200:
-        raise Exception(f"Gagal akses harga CoinGecko: {res_price.status_code}")
-    price_data = res_price.json()
-    current_price = price_data['solana']['usd']
-    volume_24h = price_data['solana']['usd_24h_vol']
+        raise Exception(f"Gagal mengambil data harga market: {res_price.status_code}")
+    pdata = res_price.json()
+    current_price = pdata['solana']['usd']
+    vol24 = pdata['solana']['usd_24h_vol']
+    summary = f"Source: CoinGecko | Price: ${current_price} | 24h Volume: ${vol24:,.0f}"
+    return current_price, summary
 
-    recent_prices = []
-    try:
-        chart_url = "https://api.coingecko.com/api/v3/coins/solana/market_chart?vs_currency=usd&days=1"
-        res_chart = requests.get(chart_url, headers=headers, timeout=15)
-        if res_chart.status_code == 200:
-            prices_list = res_chart.json().get('prices', [])
-            recent_prices = [round(p[1], 3) for p in prices_list[-24:]]
-    except Exception:
-        pass
-
-    return current_price, volume_24h, recent_prices
-
-def build_prompt(current_price, volume_24h, recent_prices, cfg):
-    history_str = f"Last 24 price points (~5m intervals): {recent_prices}" if recent_prices else "No historical array available."
+def build_prompt(current_price, market_summary, cfg):
     return f"""
     You are an autonomous 5-minute timeframe quantitative trading AI agent for SOL/USDT.
-    Current Price: ${current_price}
-    24h Volume: ${volume_24h:,.0f}
-    {history_str}
+    {market_summary}
 
     Apply the user's active strategy:
     {cfg['strategy']}
@@ -217,7 +254,8 @@ def build_prompt(current_price, volume_24h, recent_prices, cfg):
     """
 
 def call_gemini(model_name, prompt):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+    clean_name = model_name.replace("models/", "")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_name}:generateContent?key={GEMINI_API_KEY}"
     headers = {'Content-Type': 'application/json'}
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     
@@ -226,49 +264,74 @@ def call_gemini(model_name, prompt):
     
     if response.status_code != 200:
         error_msg = data.get('error', {}).get('message', str(data))
-        raise Exception(f"[{model_name}] Error {response.status_code}: {error_msg}")
+        raise Exception(f"[{clean_name}] HTTP {response.status_code}: {error_msg}")
         
     return data['candidates'][0]['content']['parts'][0]['text']
+
+def discover_valid_google_models():
+    """Mengambil daftar model yang benar-benar aktif & mendukung generateContent pada API Key Anda"""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
+    blocked_keywords = ["embedding", "imagen", "veo", "tts", "aqa", "robotics", "computer-use", "deep-research"]
+    preferred = ["gemini-3.8-flash", "gemini-2.5-pro", "gemma-3-27b-it", "gemma-3-12b-it", "gemini-flash-latest"]
+    
+    try:
+        res = requests.get(url, timeout=15).json()
+        available = []
+        for m in res.get("models", []):
+            name = m.get("name", "").replace("models/", "")
+            methods = m.get("supportedGenerationMethods", [])
+            if "generateContent" in methods and not any(b in name.lower() for b in blocked_keywords):
+                available.append(name)
+        
+        ordered = [p for p in preferred if p in available]
+        for a in available:
+            if a not in ordered:
+                ordered.append(a)
+        return ordered[:6]
+    except Exception:
+        return preferred
 
 def call_backup_ai(prompt):
     if not BACKUP_AI_API_KEY:
         raise Exception("BACKUP_AI_API_KEY belum diisi.")
-        
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {BACKUP_AI_API_KEY}'
-    }
-    payload = {
-        "model": BACKUP_AI_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2
-    }
-    
+    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {BACKUP_AI_API_KEY}'}
+    payload = {"model": BACKUP_AI_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
     response = requests.post(BACKUP_AI_URL, headers=headers, json=payload, timeout=60)
     data = response.json()
-    
     if response.status_code != 200:
-        raise Exception(f"[Backup AI] Error {response.status_code}: {data}")
-        
+        raise Exception(f"[Backup AI] HTTP {response.status_code}: {data}")
     return data['choices'][0]['message']['content']
 
-def analyze_market_with_fallback(current_price, volume_24h, recent_prices, cfg):
-    prompt = build_prompt(current_price, volume_24h, recent_prices, cfg)
+def analyze_market_with_fallback(current_price, market_summary, cfg):
+    prompt = build_prompt(current_price, market_summary, cfg)
     errors = []
 
-    gemini_models = [
-        "gemini-3.8-flash",
-        "gemini-3.8-flash-lite",
-        "gemini-flash-latest"
-    ]
+    # 1. Coba model utama (gemini-3.8-flash) dengan 1x retry jika 503 High Demand
+    for attempt in range(2):
+        try:
+            result = call_gemini("gemini-3.8-flash", prompt)
+            return result, "gemini-3.8-flash"
+        except Exception as e:
+            err_str = str(e)
+            if "503" in err_str and attempt == 0:
+                print("3.8-flash sedang sibuk (503), mencoba ulang dalam 8 detik...")
+                time.sleep(8)
+                continue
+            errors.append(err_str)
+            break
 
-    for model_name in gemini_models:
+    # 2. Auto-discovery model lain yang aktif di API Key Anda (termasuk Gemma 3 / Gemini lain)
+    candidate_models = discover_valid_google_models()
+    for model_name in candidate_models:
+        if model_name == "gemini-3.8-flash":
+            continue
         try:
             result = call_gemini(model_name, prompt)
             return result, model_name
         except Exception as e:
             errors.append(str(e))
 
+    # 3. Cadangan luar Google (jika BACKUP_AI_API_KEY diisi)
     if BACKUP_AI_API_KEY:
         try:
             result = call_backup_ai(prompt)
@@ -276,19 +339,16 @@ def analyze_market_with_fallback(current_price, volume_24h, recent_prices, cfg):
         except Exception as e:
             errors.append(str(e))
 
-    raise Exception("Semua model AI sibuk/gagal:\n" + "\n".join(errors))
+    raise Exception("Semua model AI sedang sibuk:\n" + "\n".join(errors[:4]))
 
 if __name__ == "__main__":
     config = load_config()
-    
-    # 1. Baca semua perintah/tombol Telegram yang masuk & simpan langsung ke config.json
     config = process_telegram_commands(config)
     save_config(config)
     
-    # 2. Jalankan analisa pasar
     try:
-        price, vol, recent_prices = fetch_market_data()
-        ai_result, used_model = analyze_market_with_fallback(price, vol, recent_prices, config)
+        price, market_summary = fetch_market_data()
+        ai_result, used_model = analyze_market_with_fallback(price, market_summary, config)
         clean_result = ai_result.replace("```json", "").replace("```", "").strip()
         
         status_trade = "ON (LIVE)" if config["live_trading"] else "OFF (Dry Run)"
@@ -296,7 +356,7 @@ if __name__ == "__main__":
             f"🚨 *Argon Signal Update*\n"
             f"🤖 Engine: `{used_model}` | Trading: `{status_trade}`\n\n"
             f"```json\n{clean_result}\n```\n"
-            f"_(Ketik /menu untuk membuka panel kontrol)_"
+            f"_(Ketik /menu untuk panel kontrol)_"
         )
         send_telegram(msg)
         
