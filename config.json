@@ -3,5 +3,5 @@
   "tp": 0.6,
   "sl": 0.23,
   "strategy": "1. Trending: Gunakan EMA 9 dynamic support/resistance dan momentum volume (Pullback Rejection atau Pivot Breakout). 2. Sideways/Ranging: Gunakan pantulan Bollinger Bands dan area ekstrem Stochastic Momentum Index (SMI). 3. Konfirmasi Market Structure (HH/HL untuk LONG, LH/LL untuk SHORT). Jika di zona tanggung/tidak jelas, pilih WAIT.",
-  "last_update_id": 698291142
+  "last_update_id": 698291148
 }
