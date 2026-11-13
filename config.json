@@ -1,9 +1,9 @@
 {
   "live_trading": false,
-  "tp": 0.60,
+  "tp": 0.6,
   "sl": 0.23,
   "strategy": "1. Anti-Menebak & Ikuti Tren: Selaraskan arah 5m dengan tren 1h. Dilarang melawan tren kuat kecuali ada lonjakan CVD berlawanan arah + konfirmasi struktur baru (HH/HL atau LH/LL) + divergensi SMI. 2. Pasar Trending: Fokus pada struktur HH/HL/LH/LL, susunan EMA (9, 10, 20, 30, 50, 200), dan dorongan CVD. 3. Pasar Sideways: Fokus pada pantulan Bollinger Bands (Upper/Mid/Lower), Swing High/Low, dan persilangan SMI. 4. Jika harga di zona tanggung/tanpa konfirmasi jelas, pilih WAIT.",
-  "last_update_id": 0,
+  "last_update_id": 698291153,
   "active_trade": null,
   "stats": {
     "total_closed": 0,
