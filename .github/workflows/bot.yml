@@ -2,8 +2,11 @@ name: Argon 5m Bot
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Berjalan setiap 5 menit
-  workflow_dispatch:       # Tombol agar bisa dijalankan manual
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   trading-bot:
@@ -26,4 +29,14 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+          BACKUP_AI_API_KEY: ${{ secrets.BACKUP_AI_API_KEY }}
+          BACKUP_AI_URL: ${{ secrets.BACKUP_AI_URL }}
+          BACKUP_AI_MODEL: ${{ secrets.BACKUP_AI_MODEL }}
         run: python main.py
+
+      - name: Simpan Pengaturan Telegram
+        run: |
+          git config --local user.email "bot@argon.ai"
+          git config --local user.name "Argon Remote"
+          git add config.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update config via Telegram" && git push)
