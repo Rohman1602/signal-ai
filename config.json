@@ -1,7 +1,15 @@
 {
   "live_trading": false,
-  "tp": 0.6,
+  "tp": 0.60,
   "sl": 0.23,
-  "strategy": "1. Trending: Gunakan EMA 9 dynamic support/resistance dan momentum volume (Pullback Rejection atau Pivot Breakout). 2. Sideways/Ranging: Gunakan pantulan Bollinger Bands dan area ekstrem Stochastic Momentum Index (SMI). 3. Konfirmasi Market Structure (HH/HL untuk LONG, LH/LL untuk SHORT). Jika di zona tanggung/tidak jelas, pilih WAIT.",
-  "last_update_id": 698291153
+  "strategy": "1. Anti-Menebak & Ikuti Tren: Selaraskan arah 5m dengan tren 1h. Dilarang melawan tren kuat kecuali ada lonjakan CVD berlawanan arah + konfirmasi struktur baru (HH/HL atau LH/LL) + divergensi SMI. 2. Pasar Trending: Fokus pada struktur HH/HL/LH/LL, susunan EMA (9, 10, 20, 30, 50, 200), dan dorongan CVD. 3. Pasar Sideways: Fokus pada pantulan Bollinger Bands (Upper/Mid/Lower), Swing High/Low, dan persilangan SMI. 4. Jika harga di zona tanggung/tanpa konfirmasi jelas, pilih WAIT.",
+  "last_update_id": 0,
+  "active_trade": null,
+  "stats": {
+    "total_closed": 0,
+    "tp_hit": 0,
+    "sl_hit": 0,
+    "bep_hit": 0,
+    "net_points": 0.0
+  }
 }
