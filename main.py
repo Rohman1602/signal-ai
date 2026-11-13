@@ -7,6 +7,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = str(os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
+# Opsional: AI Cadangan luar Google (Groq / DeepSeek / OpenAI)
 BACKUP_AI_API_KEY = os.environ.get("BACKUP_AI_API_KEY", "")
 BACKUP_AI_URL = os.environ.get("BACKUP_AI_URL", "https://api.groq.com/openai/v1/chat/completions")
 BACKUP_AI_MODEL = os.environ.get("BACKUP_AI_MODEL", "llama-3.3-70b-versatile")
@@ -43,7 +44,11 @@ def send_telegram(text, reply_markup=None):
     if reply_markup:
         payload["reply_markup"] = reply_markup
     try:
-        requests.post(url, json=payload, timeout=15)
+        res = requests.post(url, json=payload, timeout=15)
+        # Jika gagal karena karakter Markdown, kirim ulang sebagai teks biasa
+        if res.status_code != 200:
+            payload.pop("parse_mode", None)
+            requests.post(url, json=payload, timeout=15)
     except Exception as e:
         print(f"Gagal kirim Telegram: {e}")
 
@@ -57,7 +62,7 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON BOT*"):
         f"• *Take Profit (TP):* `+{cfg['tp']} poin`\n"
         f"• *Stop Loss (SL):* `-{cfg['sl']} poin`\n"
         f"• *Strategi Aktif:*\n_{cfg['strategy']}_\n\n"
-        f"_(Catatan: Karena memakai server terjadwal GitHub, klik tombol akan direspons saat siklus 5 menit berikutnya berjalan)_"
+        f"_(Catatan: Klik tombol atau perintah diproses mengikuti jadwal cek server GitHub setiap 5 menit)_"
     )
     
     keyboard = {
@@ -175,17 +180,18 @@ def calc_ema(values, period):
 def fetch_market_data():
     headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Bot/1.0'}
     
-    # 1. Jalur Utama: Binance Public Market Data (Bebas blokir US & menyediakan candle 5m asli)
+    # 1. Jalur Utama: Binance Public Market Data (Candle 5m asli)
     try:
-        b_url = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=5m&limit=35"
+        b_url = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=5m&limit=40"
         res = requests.get(b_url, headers=headers, timeout=15)
         if res.status_code == 200:
             klines = res.json()
             if isinstance(klines, list) and len(klines) >= 20:
+                opens = [float(k[1]) for k in klines]
                 highs = [float(k[2]) for k in klines]
                 lows = [float(k[3]) for k in klines]
                 closes = [float(k[4]) for k in klines]
-                vols = [round(float(k[5]), 1) for k in klines]
+                vols = [float(k[5]) for k in klines]
                 
                 current_price = closes[-1]
                 ema9 = calc_ema(closes, 9)
@@ -206,16 +212,31 @@ def fetch_market_data():
                 smi = round(((current_price - (hh14 + ll14) / 2) / (hl_range / 2)) * 100, 1) if hl_range > 0 else 0.0
                 
                 last_candles = [
-                    {"o": round(float(k[1]), 2), "h": round(float(k[2]), 2), "l": round(float(k[3]), 2), "c": round(float(k[4]), 2), "v": round(float(k[5]), 0)}
-                    for k in klines[-8:]
+                    {"o": round(opens[i], 2), "h": round(highs[i], 2), "l": round(lows[i], 2), "c": round(closes[i], 2), "v": round(vols[i], 0)}
+                    for i in range(-8, 0)
                 ]
+                
+                metrics = {
+                    "price": current_price,
+                    "ema9": ema9,
+                    "ema21": ema21,
+                    "bb_upper": bb_upper,
+                    "bb_mid": bb_mid,
+                    "bb_lower": bb_lower,
+                    "smi": smi,
+                    "last_open": opens[-1],
+                    "last_high": highs[-1],
+                    "last_low": lows[-1],
+                    "avg_vol": sum(vols[-10:]) / 10,
+                    "last_vol": vols[-1]
+                }
                 
                 summary = (
                     f"Source: Binance 5m Real-Time | Price: ${current_price}\n"
                     f"Indicators -> EMA 9: ${ema9} | EMA 21: ${ema21} | BB Upper: ${bb_upper}, Mid: ${bb_mid}, Lower: ${bb_lower} | SMI(14): {smi}\n"
                     f"Last 8 Candles (5m): {json.dumps(last_candles)}"
                 )
-                return current_price, summary
+                return current_price, summary, metrics
     except Exception as e:
         print(f"Binance Vision fallback ke CoinGecko: {e}")
 
@@ -228,7 +249,7 @@ def fetch_market_data():
     current_price = pdata['solana']['usd']
     vol24 = pdata['solana']['usd_24h_vol']
     summary = f"Source: CoinGecko | Price: ${current_price} | 24h Volume: ${vol24:,.0f}"
-    return current_price, summary
+    return current_price, summary, {"price": current_price}
 
 def build_prompt(current_price, market_summary, cfg):
     return f"""
@@ -268,11 +289,13 @@ def call_gemini(model_name, prompt):
         
     return data['candidates'][0]['content']['parts'][0]['text']
 
-def discover_valid_google_models():
-    """Mengambil daftar model yang benar-benar aktif & mendukung generateContent pada API Key Anda"""
+def discover_active_google_models():
+    """Memindai model terbaru yang benar-benar aktif & mengabaikan model lama (2.5 / 2.0 / 1.5)"""
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
-    blocked_keywords = ["embedding", "imagen", "veo", "tts", "aqa", "robotics", "computer-use", "deep-research"]
-    preferred = ["gemini-3.8-flash", "gemini-2.5-pro", "gemma-3-27b-it", "gemma-3-12b-it", "gemini-flash-latest"]
+    blocked = ["2.5", "2.0", "1.5", "1.0", "embedding", "imagen", "veo", "tts", "aqa", "robotics", "computer-use", "deep-research", "vision"]
+    
+    # Selalu mulai dari gemini-3.1-pro-preview sesuai arahan API Google
+    candidates = ["gemini-3.1-pro-preview"]
     
     try:
         res = requests.get(url, timeout=15).json()
@@ -280,16 +303,20 @@ def discover_valid_google_models():
         for m in res.get("models", []):
             name = m.get("name", "").replace("models/", "")
             methods = m.get("supportedGenerationMethods", [])
-            if "generateContent" in methods and not any(b in name.lower() for b in blocked_keywords):
+            if "generateContent" in methods and not any(b in name.lower() for b in blocked):
                 available.append(name)
         
-        ordered = [p for p in preferred if p in available]
-        for a in available:
-            if a not in ordered:
-                ordered.append(a)
-        return ordered[:6]
+        # Urutkan: gemini-3.1* -> gemini-3* -> gemma-3* -> lainnya
+        for prefix in ["gemini-3.1", "gemini-3", "gemma-3", "gemini"]:
+            for name in available:
+                if name.startswith(prefix) and name not in candidates:
+                    candidates.append(name)
     except Exception:
-        return preferred
+        for fallback in ["gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemma-3-27b-it", "gemma-3-12b-it"]:
+            if fallback not in candidates:
+                candidates.append(fallback)
+                
+    return candidates[:8]
 
 def call_backup_ai(prompt):
     if not BACKUP_AI_API_KEY:
@@ -302,44 +329,91 @@ def call_backup_ai(prompt):
         raise Exception(f"[Backup AI] HTTP {response.status_code}: {data}")
     return data['choices'][0]['message']['content']
 
-def analyze_market_with_fallback(current_price, market_summary, cfg):
+def local_quant_engine(m, cfg):
+    """Mesin cadangan lokal berbasis rumus jika seluruh server AI sedang sibuk (503)"""
+    price = m["price"]
+    tp_val = cfg["tp"]
+    sl_val = cfg["sl"]
+    
+    if "ema9" not in m:
+        res = {
+            "signal": "WAIT",
+            "market_regime": "UNKNOWN",
+            "entry_price": price,
+            "take_profit": round(price + tp_val, 3),
+            "stop_loss": round(price - sl_val, 3),
+            "reasoning": "Server AI sedang padat dan data indikator candle terbatas. Menunggu konfirmasi berikutnya."
+        }
+        return json.dumps(res, indent=2), "Argon-Quant-Fallback"
+
+    ema9, ema21 = m["ema9"], m["ema21"]
+    bb_up, bb_low = m["bb_upper"], m["bb_lower"]
+    smi = m["smi"]
+    
+    # Deteksi fase pasar dari lebar Bollinger Bands & jarak EMA
+    bb_width_pct = ((bb_up - bb_low) / price) * 100
+    is_trending = abs(ema9 - ema21) > (price * 0.0015) and bb_width_pct > 0.6
+    
+    signal = "WAIT"
+    regime = "TRENDING" if is_trending else "SIDEWAYS"
+    reason = f"Harga ${price} berada di zona netral antara EMA 9 (${ema9}) dan batas Bollinger (${bb_low} - ${bb_up}), SMI {smi}. Menunggu pantulan atau breakout valid."
+    tp_price = round(price + tp_val, 3)
+    sl_price = round(price - sl_val, 3)
+
+    if is_trending:
+        if ema9 > ema21 and m["last_low"] <= ema9 and price > ema9 and price > m["last_open"]:
+            signal = "LONG"
+            reason = f"Pasar Trending naik (EMA 9 ${ema9} > EMA 21 ${ema21}). Terjadi pullback rejection hijau di area EMA 9."
+        elif ema9 < ema21 and m["last_high"] >= ema9 and price < ema9 and price < m["last_open"]:
+            signal = "SHORT"
+            tp_price = round(price - tp_val, 3)
+            sl_price = round(price + sl_val, 3)
+            reason = f"Pasar Trending turun (EMA 9 ${ema9} < EMA 21 ${ema21}). Terjadi penolakan merah di area EMA 9."
+    else:
+        if price <= bb_low * 1.001 and smi <= -60:
+            signal = "LONG"
+            reason = f"Pasar Sideways. Harga menyentuh Lower Bollinger Band (${bb_low}) dengan SMI oversold ({smi})."
+        elif price >= bb_up * 0.999 and smi >= 60:
+            signal = "SHORT"
+            tp_price = round(price - tp_val, 3)
+            sl_price = round(price + sl_val, 3)
+            reason = f"Pasar Sideways. Harga menyentuh Upper Bollinger Band (${bb_up}) dengan SMI overbought ({smi})."
+
+    res = {
+        "signal": signal,
+        "market_regime": regime,
+        "entry_price": price,
+        "take_profit": tp_price,
+        "stop_loss": sl_price,
+        "reasoning": f"[Mode Cadangan Quant] {reason}"
+    }
+    return json.dumps(res, indent=2), "Argon-Quant-Engine (AI Sibuk)"
+
+def analyze_market_with_fallback(current_price, market_summary, metrics, cfg):
     prompt = build_prompt(current_price, market_summary, cfg)
-    errors = []
+    candidates = discover_active_google_models()
 
-    # 1. Coba model utama (gemini-3.8-flash) dengan 1x retry jika 503 High Demand
-    for attempt in range(2):
+    # 1. Estafet semua model Google terbaru (3.1-pro-preview, 3.1-flash, gemma-3, dll)
+    for model_name in candidates:
         try:
-            result = call_gemini("gemini-3.8-flash", prompt)
-            return result, "gemini-3.8-flash"
-        except Exception as e:
-            err_str = str(e)
-            if "503" in err_str and attempt == 0:
-                print("3.8-flash sedang sibuk (503), mencoba ulang dalam 8 detik...")
-                time.sleep(8)
-                continue
-            errors.append(err_str)
-            break
-
-    # 2. Auto-discovery model lain yang aktif di API Key Anda (termasuk Gemma 3 / Gemini lain)
-    candidate_models = discover_valid_google_models()
-    for model_name in candidate_models:
-        if model_name == "gemini-3.8-flash":
-            continue
-        try:
+            print(f"Mencoba {model_name}...")
             result = call_gemini(model_name, prompt)
             return result, model_name
         except Exception as e:
-            errors.append(str(e))
+            print(f"Lewati {model_name}: {e}")
+            if "503" in str(e):
+                time.sleep(2)
 
-    # 3. Cadangan luar Google (jika BACKUP_AI_API_KEY diisi)
+    # 2. Cadangan luar Google (jika BACKUP_AI_API_KEY diisi)
     if BACKUP_AI_API_KEY:
         try:
             result = call_backup_ai(prompt)
             return result, f"Backup ({BACKUP_AI_MODEL})"
         except Exception as e:
-            errors.append(str(e))
+            print(f"Lewati Backup AI: {e}")
 
-    raise Exception("Semua model AI sedang sibuk:\n" + "\n".join(errors[:4]))
+    # 3. Fallback terakhir: Hitungan kuantitatif lokal agar sinyal tetap berjalan 24/7
+    return local_quant_engine(metrics, cfg)
 
 if __name__ == "__main__":
     config = load_config()
@@ -347,8 +421,8 @@ if __name__ == "__main__":
     save_config(config)
     
     try:
-        price, market_summary = fetch_market_data()
-        ai_result, used_model = analyze_market_with_fallback(price, market_summary, config)
+        price, market_summary, metrics = fetch_market_data()
+        ai_result, used_model = analyze_market_with_fallback(price, market_summary, metrics, config)
         clean_result = ai_result.replace("```json", "").replace("```", "").strip()
         
         status_trade = "ON (LIVE)" if config["live_trading"] else "OFF (Dry Run)"
