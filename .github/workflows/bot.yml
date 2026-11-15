@@ -1,27 +1,23 @@
 name: Argon 5m Bot
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
-  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: argon-bot-runner
+  cancel-in-progress: false
 
 jobs:
   trading-bot:
     runs-on: ubuntu-latest
     steps:
       - name: Ambil Kode
-        uses: actions/checkout@v3
-
-      - name: Siapkan Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install Pustaka
-        run: pip install -r requirements.txt
+        uses: actions/checkout@v4
 
       - name: Jalankan AI Agent
         env:
@@ -32,11 +28,13 @@ jobs:
           BACKUP_AI_API_KEY: ${{ secrets.BACKUP_AI_API_KEY }}
           BACKUP_AI_URL: ${{ secrets.BACKUP_AI_URL }}
           BACKUP_AI_MODEL: ${{ secrets.BACKUP_AI_MODEL }}
-        run: python main.py
+        run: |
+          python3 -c "import requests" 2>/dev/null || pip install -q requests
+          python3 main.py
 
-      - name: Simpan Pengaturan Telegram
+      - name: Simpan Memori & Statistik
         run: |
           git config --local user.email "bot@argon.ai"
           git config --local user.name "Argon Remote"
           git add config.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update config via Telegram" && git push)
+          git diff --quiet && git diff-staged --quiet || (git commit -m "Update state" && git push)
