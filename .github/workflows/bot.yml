@@ -29,7 +29,7 @@ jobs:
           BACKUP_AI_URL: ${{ secrets.BACKUP_AI_URL }}
           BACKUP_AI_MODEL: ${{ secrets.BACKUP_AI_MODEL }}
         run: |
-          python3 -c "import requests" 2>/dev/null || pip install -q requests
+          python3 -c "import requests" 2>/dev/null || pip install --break-system-packages -q requests
           python3 main.py
 
       - name: Simpan Memori & Statistik
@@ -37,4 +37,8 @@ jobs:
           git config --local user.email "bot@argon.ai"
           git config --local user.name "Argon Remote"
           git add config.json
-          git diff --quiet && git diff-staged --quiet || (git commit -m "Update state" && git push)
+          if ! git diff --staged --quiet; then
+            git commit -m "Update state"
+            git pull --rebase origin main || true
+            git push
+          fi
