@@ -4,23 +4,12 @@
   "sl": 0.23,
   "strategy": "1. Anti-Menebak & Ikuti Tren: Selaraskan arah 5m dengan tren 1h. Dilarang melawan tren kuat kecuali ada lonjakan CVD berlawanan arah + konfirmasi struktur baru (HH/HL atau LH/LL) + divergensi SMI. 2. Pasar Trending: Fokus pada struktur HH/HL/LH/LL, susunan EMA (9, 10, 20, 30, 50, 200), dan dorongan CVD. 3. Pasar Sideways: Fokus pada pantulan Bollinger Bands (Upper/Mid/Lower), Swing High/Low, dan persilangan SMI. 4. Jika harga di zona tanggung/tanpa konfirmasi jelas, pilih WAIT.",
   "last_update_id": 698291159,
-  "active_trade": {
-    "direction": "SHORT",
-    "entry_price": 72.74,
-    "tp_price": 72.14,
-    "sl_price": 72.97,
-    "initial_sl_dist": 0.23,
-    "bep_trigger_price": 72.51,
-    "bep_moved": false,
-    "entry_open_time": 1794747000000,
-    "entry_time": "15/11 19:50 WIB",
-    "reason": "Sinyal SHORT diambil karena keselarasan antara tren utama 1H (Downtrend) dengan struktur harga yang tertahan di bawah EMA jangka pendek pada timeframe 5m. Meskipun ada sedikit kenaikan CVD 5m, akumulasi CVD 15m/1H masih sangat bearish, mendukung kelanjutan tren turun menuju target support."
-  },
+  "active_trade": null,
   "stats": {
-    "total_closed": 3,
+    "total_closed": 4,
     "tp_hit": 1,
-    "sl_hit": 2,
+    "sl_hit": 3,
     "bep_hit": 0,
-    "net_points": 0.14
+    "net_points": -0.09
   }
 }
