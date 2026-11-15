@@ -97,7 +97,7 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON BOT*"):
     
     active = cfg.get("active_trade")
     if active:
-        sl_status = "🛡️ Sudah pindah ke Entry (BEP)" if active.get("bep_moved") else f"SL Awal (`{active['sl_price']}`)"
+        sl_status = "🛡️ Sudah pindah ke Entry (BEP)" if active.get("bep_moved") else f"SL Awal (`${active['sl_price']}`)"
         pos_info = (
             f"📌 *POSISI AKTIF:* `{active['direction']}` @ `${active['entry_price']}`\n"
             f"   Target TP: `${active['tp_price']}` | {sl_status}"
@@ -110,8 +110,7 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON BOT*"):
         f"• *Mode Eksekusi:* `{status_trade}`\n"
         f"• *Target TP / SL:* `+{cfg['tp']}` / `-{cfg['sl']} poin`\n"
         f"{pos_info}\n\n"
-        f"{format_stats_text(cfg)}\n\n"
-        f"_(Mode Hening Aktif: Bot hanya mengirim alert otomatis saat ada Entry baru, 1:1 BEP, atau kena TP/SL)_"
+        f"{format_stats_text(cfg)}"
     )
     
     keyboard = {
@@ -279,38 +278,32 @@ def detect_structure(highs, lows, lookback=30):
     last_swing_low = min(sub_l[mid:])
     
     if last_swing_high > prev_swing_high and last_swing_low > prev_swing_low:
-        trend_code = 1.0
-        label = "UPTREND (HH/HL)"
+        return 1.0, "UPTREND (HH/HL)", round(last_swing_high, 3), round(last_swing_low, 3)
     elif last_swing_high < prev_swing_high and last_swing_low < prev_swing_low:
-        trend_code = -1.0
-        label = "DOWNTREND (LH/LL)"
+        return -1.0, "DOWNTREND (LH/LL)", round(last_swing_high, 3), round(last_swing_low, 3)
     else:
-        trend_code = 0.0
-        label = "SIDEWAYS / TRANSISI"
-        
-    return trend_code, label, round(last_swing_high, 3), round(last_swing_low, 3)
+        return 0.0, "SIDEWAYS / TRANSISI", round(last_swing_high, 3), round(last_swing_low, 3)
 
 def fetch_market_data():
-    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Bot/2.0'}
+    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Bot/2.1'}
     
-    # 1. Tarik 220 candle 5m agar EMA 200 presisi
     url_5m = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=5m&limit=220"
     res_5m = requests.get(url_5m, headers=headers, timeout=15)
     if res_5m.status_code != 200:
         raise Exception(f"Gagal tarik data 5m Binance: HTTP {res_5m.status_code}")
     klines = res_5m.json()
     
+    open_times = [int(k[0]) for k in klines]
     opens = [float(k[1]) for k in klines]
     highs = [float(k[2]) for k in klines]
     lows = [float(k[3]) for k in klines]
     closes = [float(k[4]) for k in klines]
-    vols = [float(k[5]) for k in klines]
     quote_vols = [float(k[7]) for k in klines]
     taker_buy_quotes = [float(k[10]) for k in klines]
     
     current_price = closes[-1]
+    latest_candle_time = open_times[-1]
     
-    # Hitung seluruh EMA sesuai skill (9, 10, 20, 30, 50, 200)
     ema9 = round(calc_ema_series(closes, 9)[-1], 3)
     ema10 = round(calc_ema_series(closes, 10)[-1], 3)
     ema20 = round(calc_ema_series(closes, 20)[-1], 3)
@@ -318,7 +311,6 @@ def fetch_market_data():
     ema50 = round(calc_ema_series(closes, 50)[-1], 3)
     ema200 = round(calc_ema_series(closes, 200)[-1], 3)
     
-    # Bollinger Bands (20, 2)
     win20 = closes[-20:]
     bb_mid_val = sum(win20) / 20.0
     std_dev = (sum((x - bb_mid_val) ** 2 for x in win20) / 20.0) ** 0.5
@@ -326,19 +318,14 @@ def fetch_market_data():
     bb_lower = round(bb_mid_val - 2 * std_dev, 3)
     bb_mid = round(bb_mid_val, 3)
     
-    # Stochastic Momentum Index (SMI & Signal)
     smi, smi_signal = calc_smi_series(highs, lows, closes, 10, 3, 3)
-    
-    # Struktur Pasar 5m
     struct_code, struct_label, swing_high, swing_low = detect_structure(highs, lows, 36)
     
-    # Spot CVD (Cumulative Volume Delta dalam USDT) 5m terakhir & 15m (3 bar terakhir)
     deltas_usdt = [2 * tbq - qv for tbq, qv in zip(taker_buy_quotes, quote_vols)]
     cvd_5m = round(deltas_usdt[-1], 0)
     cvd_15m = round(sum(deltas_usdt[-3:]), 0)
     cvd_1h = round(sum(deltas_usdt[-12:]), 0)
     
-    # 2. Konteks Timeframe Besar (1H) agar sesuai prinsip Trend-Following Skill
     htf_context = "Tidak tersedia"
     try:
         url_1h = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=1h&limit=60"
@@ -360,14 +347,16 @@ def fetch_market_data():
         for i in range(-6, 0)
     ]
     
-    # Ambil range High/Low dari 2 candle terakhir untuk mengecek sentuhan TP/SL/BEP antar jeda cron
-    recent_2bar_high = max(highs[-2:])
-    recent_2bar_low = min(lows[-2:])
+    # Simpan 40 candle terakhir lengkap dengan timestamp untuk evaluasi posisi aktif secara presisi
+    candle_history = [
+        {"t": open_times[i], "h": highs[i], "l": lows[i], "c": closes[i]}
+        for i in range(-40, 0)
+    ]
 
     metrics = {
         "price": current_price,
-        "recent_high": recent_2bar_high,
-        "recent_low": recent_2bar_low,
+        "latest_candle_time": latest_candle_time,
+        "candle_history": candle_history,
         "ema9": ema9, "ema10": ema10, "ema20": ema20, "ema30": ema30, "ema50": ema50, "ema200": ema200,
         "bb_upper": bb_upper, "bb_mid": bb_mid, "bb_lower": bb_lower,
         "smi": smi, "smi_signal": smi_signal,
@@ -390,11 +379,6 @@ def fetch_market_data():
     return current_price, summary, metrics
 
 def monitor_active_trade(cfg, metrics):
-    """
-    Memantau posisi yang sedang aktif.
-    Mengembalikan (cfg, status_code, message_to_send_or_None)
-    status_code: 'CLOSED_TP', 'CLOSED_SL', 'CLOSED_BEP', 'MOVED_BEP', 'STILL_RUNNING'
-    """
     trade = cfg.get("active_trade")
     if not trade:
         return cfg, "NO_TRADE", None
@@ -405,128 +389,142 @@ def monitor_active_trade(cfg, metrics):
     sl_price = float(trade["sl_price"])
     bep_trigger = float(trade["bep_trigger_price"])
     bep_moved = bool(trade.get("bep_moved", False))
+    entry_open_time = int(trade.get("entry_open_time", 0))
     
     curr_price = metrics["price"]
-    check_high = max(curr_price, metrics["recent_high"])
-    check_low = min(curr_price, metrics["recent_low"])
-    
     tp_dist = round(abs(tp_price - entry), 3)
     sl_dist = round(float(trade.get("initial_sl_dist", cfg["sl"])), 3)
     stats = cfg["stats"]
+    alerts = []
 
-    if direction == "LONG":
-        # 1. Cek jika terkena SL (atau BEP jika SL sudah dipindah ke entry)
-        if check_low <= sl_price:
-            cfg["active_trade"] = None
-            stats["total_closed"] += 1
-            if bep_moved:
-                stats["bep_hit"] += 1
-                msg = (
-                    f"🛡️ *POSISI DITUTUP: SL DI AREA ENTRY (1:1 BEP)*\n\n"
+    # Susun daftar candle sejak waktu entry secara kronologis
+    relevant_candles = [
+        c for c in metrics.get("candle_history", [])
+        if c["t"] >= entry_open_time
+    ]
+    if not relevant_candles:
+        relevant_candles = [{"t": entry_open_time + 1, "h": curr_price, "l": curr_price, "c": curr_price}]
+
+    for c in relevant_candles:
+        # Pada candle yang sama saat sinyal terbit, gunakan harga penutupan/terkini agar wick sebelum entry tidak memicu false alarm
+        if c["t"] == entry_open_time:
+            bar_high = curr_price
+            bar_low = curr_price
+        else:
+            bar_high = c["h"]
+            bar_low = c["l"]
+
+        if direction == "LONG":
+            if bar_low <= sl_price:
+                cfg["active_trade"] = None
+                stats["total_closed"] += 1
+                if bep_moved:
+                    stats["bep_hit"] += 1
+                    alerts.append(
+                        f"🛡️ *POSISI DITUTUP: SL DI AREA ENTRY (1:1 BEP)*\n\n"
+                        f"• Arah: `LONG` @ `${entry}`\n"
+                        f"• Harga Tersentuh: `${bar_low}`\n"
+                        f"• Hasil: `0.00 poin (Aman / Tanpa Risiko)`\n\n"
+                        f"{format_stats_text(cfg)}"
+                    )
+                    return cfg, "CLOSED_BEP", "\n\n---\n\n".join(alerts)
+                else:
+                    stats["sl_hit"] += 1
+                    stats["net_points"] = round(stats["net_points"] - sl_dist, 3)
+                    alerts.append(
+                        f"❌ *PERINGATAN: TERKENA STOP LOSS*\n\n"
+                        f"• Arah: `LONG` @ `${entry}`\n"
+                        f"• Batas SL: `${sl_price}` (Tersentuh: `${bar_low}`)\n"
+                        f"• Hasil: `-{sl_dist} poin`\n\n"
+                        f"{format_stats_text(cfg)}"
+                    )
+                    return cfg, "CLOSED_SL", "\n\n---\n\n".join(alerts)
+
+            if bar_high >= tp_price:
+                cfg["active_trade"] = None
+                stats["total_closed"] += 1
+                stats["tp_hit"] += 1
+                stats["net_points"] = round(stats["net_points"] + tp_dist, 3)
+                alerts.append(
+                    f"✅ *SELAMAT: TARGET TAKE PROFIT TERCAPAI!*\n\n"
                     f"• Arah: `LONG` @ `${entry}`\n"
-                    f"• Harga Tersentuh: `${check_low}`\n"
-                    f"• Hasil: `0.00 poin (Aman / Tanpa Risiko)`\n\n"
+                    f"• Target TP: `${tp_price}` (Tersentuh: `${bar_high}`)\n"
+                    f"• Profit: `+{tp_dist} poin`\n\n"
                     f"{format_stats_text(cfg)}"
                 )
-                return cfg, "CLOSED_BEP", msg
-            else:
-                stats["sl_hit"] += 1
-                stats["net_points"] = round(stats["net_points"] - sl_dist, 3)
-                msg = (
-                    f"❌ *PERINGATAN: TERKENA STOP LOSS*\n\n"
-                    f"• Arah: `LONG` @ `${entry}`\n"
-                    f"• Batas SL: `${sl_price}` (Tersentuh: `${check_low}`)\n"
-                    f"• Hasil: `-{sl_dist} poin`\n\n"
-                    f"{format_stats_text(cfg)}"
+                return cfg, "CLOSED_TP", "\n\n---\n\n".join(alerts)
+
+            if not bep_moved and bar_high >= bep_trigger:
+                bep_moved = True
+                sl_price = entry
+                trade["bep_moved"] = True
+                trade["sl_price"] = entry
+                cfg["active_trade"] = trade
+                alerts.append(
+                    f"🔔 *PENGINGAT 1:1 RISK:REWARD — PINDAH SL KE ENTRY!*\n\n"
+                    f"• Posisi Aktif: `LONG` @ `${entry}`\n"
+                    f"• Harga Mencapai: `${bar_high}` (Target +1R `${bep_trigger}` tercapai)\n"
+                    f"• 👉 *Tindakan:* Geser Stop Loss Anda ke area Entry (`${entry}`) agar posisi ini **BEBAS RISIKO (BEP)**!\n"
+                    f"• Target TP Akhir Tetap: `${tp_price}` (`+{tp_dist} poin`)"
                 )
-                return cfg, "CLOSED_SL", msg
 
-        # 2. Cek jika terkena Take Profit
-        if check_high >= tp_price:
-            cfg["active_trade"] = None
-            stats["total_closed"] += 1
-            stats["tp_hit"] += 1
-            stats["net_points"] = round(stats["net_points"] + tp_dist, 3)
-            msg = (
-                f"✅ *SELAMAT: TARGET TAKE PROFIT TERCAPAI!*\n\n"
-                f"• Arah: `LONG` @ `${entry}`\n"
-                f"• Target TP: `${tp_price}` (Tersentuh: `${check_high}`)\n"
-                f"• Profit: `+{tp_dist} poin`\n\n"
-                f"{format_stats_text(cfg)}"
-            )
-            return cfg, "CLOSED_TP", msg
+        elif direction == "SHORT":
+            if bar_high >= sl_price:
+                cfg["active_trade"] = None
+                stats["total_closed"] += 1
+                if bep_moved:
+                    stats["bep_hit"] += 1
+                    alerts.append(
+                        f"🛡️ *POSISI DITUTUP: SL DI AREA ENTRY (1:1 BEP)*\n\n"
+                        f"• Arah: `SHORT` @ `${entry}`\n"
+                        f"• Harga Tersentuh: `${bar_high}`\n"
+                        f"• Hasil: `0.00 poin (Aman / Tanpa Risiko)`\n\n"
+                        f"{format_stats_text(cfg)}"
+                    )
+                    return cfg, "CLOSED_BEP", "\n\n---\n\n".join(alerts)
+                else:
+                    stats["sl_hit"] += 1
+                    stats["net_points"] = round(stats["net_points"] - sl_dist, 3)
+                    alerts.append(
+                        f"❌ *PERINGATAN: TERKENA STOP LOSS*\n\n"
+                        f"• Arah: `SHORT` @ `${entry}`\n"
+                        f"• Batas SL: `${sl_price}` (Tersentuh: `${bar_high}`)\n"
+                        f"• Hasil: `-{sl_dist} poin`\n\n"
+                        f"{format_stats_text(cfg)}"
+                    )
+                    return cfg, "CLOSED_SL", "\n\n---\n\n".join(alerts)
 
-        # 3. Cek jika baru saja mencapai rasio 1:1 (saatnya pindah SL ke area Entry!)
-        if not bep_moved and check_high >= bep_trigger:
-            trade["bep_moved"] = True
-            trade["sl_price"] = entry
-            cfg["active_trade"] = trade
-            msg = (
-                f"🔔 *PENGINGAT 1:1 RISK:REWARD — PINDAH SL KE ENTRY!*\n\n"
-                f"• Posisi Aktif: `LONG` @ `${entry}`\n"
-                f"• Harga Saat Ini: `${curr_price}` (Sudah mencapai +1R di `${bep_trigger}`)\n"
-                f"• 👉 *Tindakan:* Geser Stop Loss Anda ke area Entry (`${entry}`) agar posisi ini **BEBAS RISIKO (BEP)**!\n"
-                f"• Target TP Akhir Tetap: `${tp_price}` (`+{tp_dist} poin`)"
-            )
-            return cfg, "MOVED_BEP", msg
-
-    elif direction == "SHORT":
-        # 1. Cek jika terkena SL (atau BEP)
-        if check_high >= sl_price:
-            cfg["active_trade"] = None
-            stats["total_closed"] += 1
-            if bep_moved:
-                stats["bep_hit"] += 1
-                msg = (
-                    f"🛡️ *POSISI DITUTUP: SL DI AREA ENTRY (1:1 BEP)*\n\n"
+            if bar_low <= tp_price:
+                cfg["active_trade"] = None
+                stats["total_closed"] += 1
+                stats["tp_hit"] += 1
+                stats["net_points"] = round(stats["net_points"] + tp_dist, 3)
+                alerts.append(
+                    f"✅ *SELAMAT: TARGET TAKE PROFIT TERCAPAI!*\n\n"
                     f"• Arah: `SHORT` @ `${entry}`\n"
-                    f"• Harga Tersentuh: `${check_high}`\n"
-                    f"• Hasil: `0.00 poin (Aman / Tanpa Risiko)`\n\n"
+                    f"• Target TP: `${tp_price}` (Tersentuh: `${bar_low}`)\n"
+                    f"• Profit: `+{tp_dist} poin`\n\n"
                     f"{format_stats_text(cfg)}"
                 )
-                return cfg, "CLOSED_BEP", msg
-            else:
-                stats["sl_hit"] += 1
-                stats["net_points"] = round(stats["net_points"] - sl_dist, 3)
-                msg = (
-                    f"❌ *PERINGATAN: TERKENA STOP LOSS*\n\n"
-                    f"• Arah: `SHORT` @ `${entry}`\n"
-                    f"• Batas SL: `${sl_price}` (Tersentuh: `${check_high}`)\n"
-                    f"• Hasil: `-{sl_dist} poin`\n\n"
-                    f"{format_stats_text(cfg)}"
+                return cfg, "CLOSED_TP", "\n\n---\n\n".join(alerts)
+
+            if not bep_moved and bar_low <= bep_trigger:
+                bep_moved = True
+                sl_price = entry
+                trade["bep_moved"] = True
+                trade["sl_price"] = entry
+                cfg["active_trade"] = trade
+                alerts.append(
+                    f"🔔 *PENGINGAT 1:1 RISK:REWARD — PINDAH SL KE ENTRY!*\n\n"
+                    f"• Posisi Aktif: `SHORT` @ `${entry}`\n"
+                    f"• Harga Mencapai: `${bar_low}` (Target +1R `${bep_trigger}` tercapai)\n"
+                    f"• 👉 *Tindakan:* Geser Stop Loss Anda ke area Entry (`${entry}`) agar posisi ini **BEBAS RISIKO (BEP)**!\n"
+                    f"• Target TP Akhir Tetap: `${tp_price}` (`+{tp_dist} poin`)"
                 )
-                return cfg, "CLOSED_SL", msg
 
-        # 2. Cek jika terkena Take Profit
-        if check_low <= tp_price:
-            cfg["active_trade"] = None
-            stats["total_closed"] += 1
-            stats["tp_hit"] += 1
-            stats["net_points"] = round(stats["net_points"] + tp_dist, 3)
-            msg = (
-                f"✅ *SELAMAT: TARGET TAKE PROFIT TERCAPAI!*\n\n"
-                f"• Arah: `SHORT` @ `${entry}`\n"
-                f"• Target TP: `${tp_price}` (Tersentuh: `${check_low}`)\n"
-                f"• Profit: `+{tp_dist} poin`\n\n"
-                f"{format_stats_text(cfg)}"
-            )
-            return cfg, "CLOSED_TP", msg
+    if alerts:
+        return cfg, "MOVED_BEP", "\n\n---\n\n".join(alerts)
 
-        # 3. Cek jika mencapai rasio 1:1
-        if not bep_moved and check_low <= bep_trigger:
-            trade["bep_moved"] = True
-            trade["sl_price"] = entry
-            cfg["active_trade"] = trade
-            msg = (
-                f"🔔 *PENGINGAT 1:1 RISK:REWARD — PINDAH SL KE ENTRY!*\n\n"
-                f"• Posisi Aktif: `SHORT` @ `${entry}`\n"
-                f"• Harga Saat Ini: `${curr_price}` (Sudah mencapai +1R di `${bep_trigger}`)\n"
-                f"• 👉 *Tindakan:* Geser Stop Loss Anda ke area Entry (`${entry}`) agar posisi ini **BEBAS RISIKO (BEP)**!\n"
-                f"• Target TP Akhir Tetap: `${tp_price}` (`+{tp_dist} poin`)"
-            )
-            return cfg, "MOVED_BEP", msg
-
-    # Posisi masih berjalan normal
     floating = round((curr_price - entry) if direction == "LONG" else (entry - curr_price), 3)
     sl_note = f"🛡️ Sudah di Entry (`${entry}`)" if bep_moved else f"`${sl_price}`"
     status_msg = (
@@ -553,7 +551,6 @@ def build_prompt(current_price, market_summary, cfg):
     {cfg['strategy']}
 
     MANDATORY STEP-BY-STEP VERIFICATION BEFORE DECIDING:
-    You MUST test the strategy rules one by one in order before outputting a signal:
     - Step 1 (Trend & Structure): Compare 1H trend with 5M structure (HH/HL vs LH/LL). Never fight a strong trend unless Spot CVD strongly surges against it AND a new structure break is confirmed.
     - Step 2 (Adaptive Indicator Check):
       * If TRENDING: Check EMA alignment (9, 10, 20, 30, 50, 200) and pullback/breakout confirmation.
@@ -599,8 +596,6 @@ def call_gemini(model_name, prompt):
 def discover_active_google_models():
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
     blocked = ["2.5", "2.0", "1.5", "1.0", "embedding", "imagen", "veo", "tts", "aqa", "robotics", "computer-use", "deep-research", "vision"]
-    
-    # Utamakan gemini-3.1-flash-lite-preview yang sudah terbukti berjalan lancar di akun Anda
     candidates = ["gemini-3.1-flash-lite-preview", "gemini-3.1-pro-preview"]
     
     try:
@@ -717,19 +712,16 @@ if __name__ == "__main__":
     try:
         price, market_summary, metrics = fetch_market_data()
         
-        # 1. Cek terlebih dahulu apakah ada posisi aktif dari siklus sebelumnya
         if config.get("active_trade"):
             config, trade_status, trade_msg = monitor_active_trade(config, metrics)
             
-            # Kirim pesan jika posisi baru saja menyentuh TP, SL, 1:1 BEP, atau user mengecek manual
             if trade_status in ["CLOSED_TP", "CLOSED_SL", "CLOSED_BEP", "MOVED_BEP"]:
                 send_telegram(trade_msg)
             elif trade_status == "STILL_RUNNING" and is_manual_scan:
                 send_telegram(trade_msg)
             else:
-                print("Mode Hening: Posisi aktif masih berjalan normal, tidak mengirim spam.")
+                print("Mode Hening: Posisi aktif masih berjalan normal.")
                 
-        # 2. Jika TIDAK ada posisi aktif, evaluasi setup strategi baru secara bertahap
         else:
             ai_data, used_model = analyze_market_with_fallback(price, market_summary, metrics, config)
             sig = str(ai_data.get("signal", "WAIT")).upper()
@@ -744,7 +736,6 @@ if __name__ == "__main__":
                 sl_price = round(price - sl_dist, 3) if sig == "LONG" else round(price + sl_dist, 3)
                 bep_trigger = round(price + sl_dist, 3) if sig == "LONG" else round(price - sl_dist, 3)
                 
-                # Simpan posisi baru ke dalam memori config.json
                 config["active_trade"] = {
                     "direction": sig,
                     "entry_price": price,
@@ -753,6 +744,7 @@ if __name__ == "__main__":
                     "initial_sl_dist": sl_dist,
                     "bep_trigger_price": bep_trigger,
                     "bep_moved": False,
+                    "entry_open_time": metrics["latest_candle_time"],
                     "entry_time": now_wib_str(),
                     "reason": reason
                 }
@@ -771,12 +763,11 @@ if __name__ == "__main__":
                     f"2️⃣ Indikator Adaptif: {steps.get('step2_adaptive_indicator', '-')}\n"
                     f"3️⃣ Momentum & CVD: {steps.get('step3_momentum_cvd', '-')}\n\n"
                     f"💡 *Kesimpulan:* {reason}\n\n"
-                    f"_(Bot akan terus memantau posisi ini di latar belakang dan memberi tahu saat mencapai 1:1 BEP, TP, atau SL)_"
+                    f"_(Bot terus memantau setiap candle 5m untuk memberi tahu saat mencapai 1:1 BEP, TP, atau SL)_"
                 )
                 send_telegram(msg)
                 
             else:
-                # Setup masih WAIT: Hanya kirim pesan jika user menekan tombol Cek Sinyal secara manual
                 if is_manual_scan:
                     msg = (
                         f"⏸️ *STATUS: WAIT (MENUNGGU KONFIRMASI)*\n"
@@ -787,16 +778,15 @@ if __name__ == "__main__":
                         f"2️⃣ Indikator Adaptif: {steps.get('step2_adaptive_indicator', '-')}\n"
                         f"3️⃣ Momentum & CVD: {steps.get('step3_momentum_cvd', '-')}\n\n"
                         f"💡 *Alasan Belum Entry:* {reason}\n\n"
-                        f"_(Mode Hening aktif: Bot tidak akan mengirim notif setiap 5 menit selama status masih WAIT)_"
+                        f"_(Mode Hening aktif: Bot tidak mengirim notif setiap 5 menit selama status masih WAIT)_"
                     )
                     send_telegram(msg)
                 else:
-                    print("Mode Hening: Setup masih WAIT, tidak mengirim spam ke Telegram.")
+                    print("Mode Hening: Setup masih WAIT.")
 
     except Exception as e:
         print(f"Error siklus: {e}")
         if is_manual_scan:
             send_telegram(f"⚠️ *Argon System Warning*\n\n`{str(e)}`")
 
-    # Simpan seluruh perubahan memori posisi, statistik, dan ID chat Telegram ke config.json
     save_config(config)
