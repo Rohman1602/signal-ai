@@ -24,10 +24,12 @@ def load_config():
         "tp": 0.60,
         "sl": 0.23,
         "strategy": (
-            "1. Anti-Menebak & Ikuti Tren: Selaraskan arah 5m dengan tren 1h. Dilarang melawan tren kuat kecuali ada lonjakan CVD berlawanan arah + konfirmasi struktur baru (HH/HL atau LH/LL) + divergensi SMI. "
-            "2. Pasar Trending: Fokus pada struktur HH/HL/LH/LL, susunan EMA (9, 10, 20, 30, 50, 200), dan dorongan CVD. "
-            "3. Pasar Sideways: Fokus pada pantulan Bollinger Bands (Upper/Mid/Lower), Swing High/Low, dan persilangan SMI. "
-            "4. Jika harga di zona tanggung/tanpa konfirmasi jelas, pilih WAIT."
+            "1. Volatilitas (ATR 5m): Tolak entry jika volatilitas terlalu ekstrem (SL 0.23 rawan tersapu noise) atau market terlalu mati untuk mengejar TP 0.60. "
+            "2. Dominasi Struktur 5m & 15m: Walaupun tren 1H turun, DILARANG SHORT jika 5m/15m masih membentuk struktur naik (HH/HL), tunggu konfirmasi struktur jelas. "
+            "3. Area Entry Presisi: Wajib entry di area kunci (EMA 9/20/50, BB extreme, atau breakout-retest struktur), dilarang entry di harga tanggung. "
+            "4. Jalur TP Bersih: Pastikan tidak ada tembok Support/Resistance besar (Swing 5m/15m/1H atau EMA 200) yang menghalangi jalur menuju TP 0.60. "
+            "5. Konfirmasi Candlestick & SL Aman: Wajib ada konfirmasi bentuk candle dengan volume kuat, dan posisi SL 0.23 terlindung di balik struktur/ekor candle. "
+            "6. Momentum & Order Flow: SMI dan Spot CVD (5m & 15m) wajib searah."
         ),
         "last_update_id": 0,
         "active_trade": None,
@@ -103,7 +105,7 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON BOT*"):
             f"   Target TP: `${active['tp_price']}` | {sl_status}"
         )
     else:
-        pos_info = "📌 *POSISI AKTIF:* `Tidak ada (Memantau setup baru)`"
+        pos_info = "📌 *POSISI AKTIF:* `Tidak ada (Saringan 6 Gerbang Aktif)`"
 
     text = (
         f"{header}\n\n"
@@ -172,7 +174,7 @@ def process_telegram_commands(cfg):
                 help_text = (
                     "📝 *PANDUAN PERINTAH TELEGRAM*\n\n"
                     "• `/menu` — Membuka panel tombol kendali\n"
-                    "• `/cek` — Mengecek analisa market / posisi aktif sekarang\n"
+                    "• `/cek` — Audit market 6 gerbang / cek posisi aktif\n"
                     "• `/stats` — Melihat rekap evaluasi TP, SL, dan 1:1 BEP\n"
                     "• `/tp 0.60` — Mengubah target Take Profit (poin)\n"
                     "• `/sl 0.23` — Mengubah batas Stop Loss (poin)\n"
@@ -242,6 +244,21 @@ def calc_ema_series(values, period):
         ema_list.append(v * k + ema_list[-1] * (1 - k))
     return ema_list
 
+def calc_atr(highs, lows, closes, period=14):
+    trs = []
+    for i in range(len(closes)):
+        if i == 0:
+            trs.append(highs[i] - lows[i])
+        else:
+            tr = max(
+                highs[i] - lows[i],
+                abs(highs[i] - closes[i-1]),
+                abs(lows[i] - closes[i-1])
+            )
+            trs.append(tr)
+    atr_series = calc_ema_series(trs, period)
+    return round(atr_series[-1], 4)
+
 def calc_smi_series(highs, lows, closes, length=10, smooth1=3, smooth2=3):
     rel_diff = []
     hl_range = []
@@ -267,7 +284,7 @@ def calc_smi_series(highs, lows, closes, length=10, smooth1=3, smooth2=3):
     smi_sig = calc_ema_series(smi_vals, smooth2)
     return round(smi_vals[-1], 2), round(smi_sig[-1], 2)
 
-def detect_structure(highs, lows, lookback=30):
+def detect_structure(highs, lows, lookback=24):
     sub_h = highs[-lookback:]
     sub_l = lows[-lookback:]
     mid = len(sub_h) // 2
@@ -284,22 +301,58 @@ def detect_structure(highs, lows, lookback=30):
     else:
         return 0.0, "SIDEWAYS / TRANSISI", round(last_swing_high, 3), round(last_swing_low, 3)
 
-def fetch_market_data():
-    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Bot/2.1'}
+def analyze_candle_anatomy(o, h, l, c, v, avg_v):
+    total_range = max(h - l, 0.001)
+    body = abs(c - o)
+    upper_wick = h - max(o, c)
+    lower_wick = min(o, c) - l
     
+    body_pct = round((body / total_range) * 100, 1)
+    upper_wick_pct = round((upper_wick / total_range) * 100, 1)
+    lower_wick_pct = round((lower_wick / total_range) * 100, 1)
+    vol_ratio = round(v / avg_v, 2) if avg_v > 0 else 1.0
+    
+    direction = "BULLISH" if c > o else ("BEARISH" if c < o else "DOJI")
+    pattern = "Normal"
+    if body_pct <= 25:
+        pattern = "Doji / Indecision"
+    elif lower_wick_pct >= 50 and c >= o:
+        pattern = "Bullish Rejection Pinbar (Lower Wick Kuat)"
+    elif upper_wick_pct >= 50 and c <= o:
+        pattern = "Bearish Rejection Pinbar (Upper Wick Kuat)"
+    elif body_pct >= 65 and direction == "BULLISH":
+        pattern = "Strong Bullish Momentum Body"
+    elif body_pct >= 65 and direction == "BEARISH":
+        pattern = "Strong Bearish Momentum Body"
+        
+    return {
+        "dir": direction,
+        "range": round(total_range, 3),
+        "body_pct": body_pct,
+        "upper_wick_pct": upper_wick_pct,
+        "lower_wick_pct": lower_wick_pct,
+        "vol_ratio": vol_ratio,
+        "pattern": pattern
+    }
+
+def fetch_market_data():
+    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Bot/3.0'}
+    
+    # 1. Data 5 Menit (220 candle)
     url_5m = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=5m&limit=220"
     res_5m = requests.get(url_5m, headers=headers, timeout=15)
     if res_5m.status_code != 200:
         raise Exception(f"Gagal tarik data 5m Binance: HTTP {res_5m.status_code}")
-    klines = res_5m.json()
+    k5 = res_5m.json()
     
-    open_times = [int(k[0]) for k in klines]
-    opens = [float(k[1]) for k in klines]
-    highs = [float(k[2]) for k in klines]
-    lows = [float(k[3]) for k in klines]
-    closes = [float(k[4]) for k in klines]
-    quote_vols = [float(k[7]) for k in klines]
-    taker_buy_quotes = [float(k[10]) for k in klines]
+    open_times = [int(k[0]) for k in k5]
+    opens = [float(k[1]) for k in k5]
+    highs = [float(k[2]) for k in k5]
+    lows = [float(k[3]) for k in k5]
+    closes = [float(k[4]) for k in k5]
+    vols = [float(k[5]) for k in k5]
+    quote_vols = [float(k[7]) for k in k5]
+    taker_buy_quotes = [float(k[10]) for k in k5]
     
     current_price = closes[-1]
     latest_candle_time = open_times[-1]
@@ -310,6 +363,7 @@ def fetch_market_data():
     ema30 = round(calc_ema_series(closes, 30)[-1], 3)
     ema50 = round(calc_ema_series(closes, 50)[-1], 3)
     ema200 = round(calc_ema_series(closes, 200)[-1], 3)
+    atr_5m = calc_atr(highs, lows, closes, 14)
     
     win20 = closes[-20:]
     bb_mid_val = sum(win20) / 20.0
@@ -317,28 +371,57 @@ def fetch_market_data():
     bb_upper = round(bb_mid_val + 2 * std_dev, 3)
     bb_lower = round(bb_mid_val - 2 * std_dev, 3)
     bb_mid = round(bb_mid_val, 3)
+    bb_width_pct = round(((bb_upper - bb_lower) / current_price) * 100, 3)
     
-    smi, smi_signal = calc_smi_series(highs, lows, closes, 10, 3, 3)
-    struct_code, struct_label, swing_high, swing_low = detect_structure(highs, lows, 36)
+    smi_5m, smi_sig_5m = calc_smi_series(highs, lows, closes, 10, 3, 3)
+    struct_5m, struct_5m_label, sh_5m, sl_5m = detect_structure(highs, lows, 24)
     
     deltas_usdt = [2 * tbq - qv for tbq, qv in zip(taker_buy_quotes, quote_vols)]
     cvd_5m = round(deltas_usdt[-1], 0)
     cvd_15m = round(sum(deltas_usdt[-3:]), 0)
     cvd_1h = round(sum(deltas_usdt[-12:]), 0)
     
-    htf_context = "Tidak tersedia"
+    avg_vol_20 = sum(vols[-21:-1]) / 20.0
+    prev_candle_anatomy = analyze_candle_anatomy(opens[-2], highs[-2], lows[-2], closes[-2], vols[-2], avg_vol_20)
+    curr_candle_anatomy = analyze_candle_anatomy(opens[-1], highs[-1], lows[-1], closes[-1], vols[-1], avg_vol_20)
+    
+    # 2. Data 15 Menit (100 candle) — Krusial untuk konfirmasi struktur menengah
+    struct_15m, struct_15m_label, sh_15m, sl_15m = 0.0, "TIDAK TERSEDIA", sh_5m, sl_5m
+    ema9_15m, ema20_15m, ema50_15m, ema200_15m = ema9, ema20, ema50, ema200
+    smi_15m, smi_sig_15m = smi_5m, smi_sig_5m
+    atr_15m = atr_5m
+    try:
+        url_15m = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=15m&limit=100"
+        res_15m = requests.get(url_15m, headers=headers, timeout=10)
+        if res_15m.status_code == 200:
+            k15 = res_15m.json()
+            h15 = [float(k[2]) for k in k15]
+            l15 = [float(k[3]) for k in k15]
+            c15 = [float(k[4]) for k in k15]
+            struct_15m, struct_15m_label, sh_15m, sl_15m = detect_structure(h15, l15, 20)
+            ema9_15m = round(calc_ema_series(c15, 9)[-1], 3)
+            ema20_15m = round(calc_ema_series(c15, 20)[-1], 3)
+            ema50_15m = round(calc_ema_series(c15, 50)[-1], 3)
+            ema200_15m = round(calc_ema_series(c15, 200)[-1], 3)
+            smi_15m, smi_sig_15m = calc_smi_series(h15, l15, c15, 10, 3, 3)
+            atr_15m = calc_atr(h15, l15, c15, 14)
+    except Exception:
+        pass
+
+    # 3. Data 1 Jam (60 candle) — Konteks tren makro
+    struct_1h, struct_1h_label, sh_1h, sl_1h = 0.0, "TIDAK TERSEDIA", sh_15m, sl_15m
+    ema20_1h, ema50_1h = ema20_15m, ema50_15m
     try:
         url_1h = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=1h&limit=60"
         res_1h = requests.get(url_1h, headers=headers, timeout=10)
         if res_1h.status_code == 200:
             k1h = res_1h.json()
-            c1h = [float(k[4]) for k in k1h]
             h1h = [float(k[2]) for k in k1h]
             l1h = [float(k[3]) for k in k1h]
+            c1h = [float(k[4]) for k in k1h]
+            struct_1h, struct_1h_label, sh_1h, sl_1h = detect_structure(h1h, l1h, 24)
             ema20_1h = round(calc_ema_series(c1h, 20)[-1], 3)
             ema50_1h = round(calc_ema_series(c1h, 50)[-1], 3)
-            _, struct_1h_label, _, _ = detect_structure(h1h, l1h, 24)
-            htf_context = f"1H Trend: {struct_1h_label} | EMA20(1H): ${ema20_1h} | EMA50(1H): ${ema50_1h}"
     except Exception:
         pass
 
@@ -347,7 +430,6 @@ def fetch_market_data():
         for i in range(-6, 0)
     ]
     
-    # Simpan 40 candle terakhir lengkap dengan timestamp untuk evaluasi posisi aktif secara presisi
     candle_history = [
         {"t": open_times[i], "h": highs[i], "l": lows[i], "c": closes[i]}
         for i in range(-40, 0)
@@ -357,26 +439,155 @@ def fetch_market_data():
         "price": current_price,
         "latest_candle_time": latest_candle_time,
         "candle_history": candle_history,
+        "atr_5m": atr_5m, "atr_15m": atr_15m, "bb_width_pct": bb_width_pct,
         "ema9": ema9, "ema10": ema10, "ema20": ema20, "ema30": ema30, "ema50": ema50, "ema200": ema200,
+        "ema9_15m": ema9_15m, "ema20_15m": ema20_15m, "ema50_15m": ema50_15m, "ema200_15m": ema200_15m,
+        "ema20_1h": ema20_1h, "ema50_1h": ema50_1h,
         "bb_upper": bb_upper, "bb_mid": bb_mid, "bb_lower": bb_lower,
-        "smi": smi, "smi_signal": smi_signal,
-        "structure_trend": struct_code, "structure_label": struct_label,
-        "last_swing_high": swing_high, "last_swing_low": swing_low,
+        "smi": smi_5m, "smi_signal": smi_sig_5m,
+        "smi_15m": smi_15m, "smi_sig_15m": smi_sig_15m,
+        "struct_5m": struct_5m, "struct_5m_label": struct_5m_label, "sh_5m": sh_5m, "sl_5m": sl_5m,
+        "struct_15m": struct_15m, "struct_15m_label": struct_15m_label, "sh_15m": sh_15m, "sl_15m": sl_15m,
+        "struct_1h": struct_1h, "struct_1h_label": struct_1h_label, "sh_1h": sh_1h, "sl_1h": sl_1h,
         "cvd_5m": cvd_5m, "cvd_15m": cvd_15m, "cvd_1h": cvd_1h,
-        "htf_context": htf_context,
-        "last_open": opens[-1], "last_high": highs[-1], "last_low": lows[-1]
+        "prev_candle": prev_candle_anatomy,
+        "curr_candle": curr_candle_anatomy,
+        "last_2_high": max(highs[-2:]),
+        "last_2_low": min(lows[-2:])
     }
     
     summary = (
-        f"Asset: SOL/USDT Perp/Spot | Current Price: ${current_price}\n"
-        f"Higher Timeframe Context -> {htf_context}\n"
-        f"5M Market Structure -> {struct_label} (code={struct_code}) | Swing High: ${swing_high} | Swing Low: ${swing_low}\n"
+        f"Asset: SOL/USDT | Current Price: ${current_price}\n"
+        f"Volatility -> 5M ATR(14): {atr_5m} pts | 15M ATR(14): {atr_15m} pts | BB Width: {bb_width_pct}%\n"
+        f"Multi-Timeframe Structure:\n"
+        f"  - 5M Structure: {struct_5m_label} (Swing High: ${sh_5m}, Swing Low: ${sl_5m})\n"
+        f"  - 15M Structure: {struct_15m_label} (Swing High: ${sh_15m}, Swing Low: ${sl_15m})\n"
+        f"  - 1H Macro Trend: {struct_1h_label} (Swing High: ${sh_1h}, Swing Low: ${sl_1h}, EMA20: ${ema20_1h}, EMA50: ${ema50_1h})\n"
         f"5M EMAs -> EMA9: ${ema9} | EMA10: ${ema10} | EMA20: ${ema20} | EMA30: ${ema30} | EMA50: ${ema50} | EMA200: ${ema200}\n"
-        f"5M Volatility & Momentum -> BB Upper: ${bb_upper} | BB Mid: ${bb_mid} | BB Lower: ${bb_lower} | SMI: {smi} (Signal: {smi_signal})\n"
+        f"15M EMAs -> EMA9: ${ema9_15m} | EMA20: ${ema20_15m} | EMA50: ${ema50_15m} | EMA200: ${ema200_15m}\n"
+        f"Bollinger Bands (5M) -> Upper: ${bb_upper} | Mid: ${bb_mid} | Lower: ${bb_lower}\n"
+        f"Momentum (SMI) -> 5M SMI: {smi_5m} (Sig: {smi_sig_5m}) | 15M SMI: {smi_15m} (Sig: {smi_sig_15m})\n"
         f"Spot Order Flow (CVD USDT) -> 5m: ${cvd_5m:+,.0f} | 15m: ${cvd_15m:+,.0f} | 1h: ${cvd_1h:+,.0f}\n"
+        f"Candlestick Anatomy -> Prev Closed 5M: {json.dumps(prev_candle_anatomy)} | Current 5M: {json.dumps(curr_candle_anatomy)}\n"
         f"Last 6 Candles (5m): {json.dumps(last_candles)}"
     )
     return current_price, summary, metrics
+
+def evaluate_quant_gates(m, cfg):
+    """
+    Saringan Kuantitatif Keras sebelum AI mengambil keputusan:
+    Memeriksa Volatilitas, Dominasi Struktur 5m/15m, Area POI, dan Halangan TP 0.60.
+    """
+    price = m["price"]
+    tp_dist = float(cfg["tp"])
+    sl_dist = float(cfg["sl"])
+    atr_5m = m["atr_5m"]
+    
+    # 1. Evaluasi Volatilitas terhadap SL (0.23) & TP (0.60)
+    max_safe_atr = round(sl_dist * 1.12, 3)  # ~0.258 pts
+    max_candle_rng = round(sl_dist * 1.65, 3)  # ~0.380 pts
+    min_viable_atr = 0.065
+    
+    vol_status = "OPTIMAL"
+    vol_note = f"ATR 5m ({atr_5m}) ideal untuk SL {sl_dist} & TP {tp_dist}."
+    allow_long = True
+    allow_short = True
+    
+    if atr_5m > max_safe_atr or m["curr_candle"]["range"] > max_candle_rng or m["prev_candle"]["range"] > max_candle_rng:
+        vol_status = "TERLALU_EKSTREM"
+        vol_note = f"Volatilitas terlalu liar (ATR 5m={atr_5m}, Range={m['curr_candle']['range']}). SL {sl_dist} poin sangat rawan tersapu noise."
+        allow_long = False
+        allow_short = False
+    elif atr_5m < min_viable_atr and m["bb_width_pct"] < 0.35:
+        vol_status = "TERLALU_LAMBAT"
+        vol_note = f"Market terlalu sepi/mati (ATR 5m={atr_5m}, BB Width={m['bb_width_pct']}%). Sulit menjangkau TP {tp_dist} poin."
+        allow_long = False
+        allow_short = False
+
+    # 2. Dominasi Struktur 5m & 15m (Jangan lawan 5m/15m yang sedang membangun struktur)
+    s5 = m["struct_5m"]
+    s15 = m["struct_15m"]
+    struct_note = f"5M: {m['struct_5m_label']} | 15M: {m['struct_15m_label']} | 1H: {m['struct_1h_label']}"
+    
+    if s5 == 1.0 or s15 == 1.0:
+        allow_short = False
+        struct_note += " -> SHORT diblokir karena 5m/15m sedang membentuk struktur naik (HH/HL)."
+    if s5 == -1.0 or s15 == -1.0:
+        allow_long = False
+        struct_note += " -> LONG diblokir karena 5m/15m sedang membentuk struktur turun (LH/LL)."
+    if s5 == 0.0 and s15 == 0.0:
+        # Di pasar sideways murni, hanya izinkan pantulan di dekat batas luar BB / Swing
+        if price > m["bb_lower"] + (m["bb_upper"] - m["bb_lower"]) * 0.25:
+            allow_long = False
+        if price < m["bb_upper"] - (m["bb_upper"] - m["bb_lower"]) * 0.25:
+            allow_short = False
+        struct_note += " -> Pasar sideways, entry dibatasi hanya di tepi ekstrem Bollinger Bands."
+
+    # 3. Cek Area Entry (Point of Interest / POI) - Dilarang entry di ruang kosong
+    key_levels = [
+        m["ema9"], m["ema20"], m["ema50"], m["ema20_15m"],
+        m["bb_upper"], m["bb_mid"], m["bb_lower"],
+        m["sh_5m"], m["sl_5m"], m["sh_15m"], m["sl_15m"]
+    ]
+    nearest_dist = min(abs(price - lvl) for lvl in key_levels)
+    max_poi_dist = max(0.14, round(atr_5m * 1.15, 3))
+    poi_valid = nearest_dist <= max_poi_dist
+    poi_note = (
+        f"Valid (jarak {round(nearest_dist, 3)} poin dari level kunci terdekat)"
+        if poi_valid else
+        f"Tidak Valid / No Man's Land (jarak {round(nearest_dist, 3)} poin dari level teknikal terdekat, batas {max_poi_dist})"
+    )
+    if not poi_valid:
+        allow_long = False
+        allow_short = False
+
+    # 4. Pemindai Halangan S/R Menuju Target TP (0.60 poin)
+    res_levels = {
+        "Swing High 5m": m["sh_5m"],
+        "Swing High 15m": m["sh_15m"],
+        "Swing High 1H": m["sh_1h"],
+        "EMA 200 (5m)": m["ema200"],
+        "EMA 200 (15m)": m["ema200_15m"],
+        "Upper BB (5m)": m["bb_upper"]
+    }
+    sup_levels = {
+        "Swing Low 5m": m["sl_5m"],
+        "Swing Low 15m": m["sl_15m"],
+        "Swing Low 1H": m["sl_1h"],
+        "EMA 200 (5m)": m["ema200"],
+        "EMA 200 (15m)": m["ema200_15m"],
+        "Lower BB (5m)": m["bb_lower"]
+    }
+    
+    # Cari penghalang signifikan yang jaraknya > 0.08 tapi < 72% dari target TP (0.43 poin)
+    min_clear_room = round(tp_dist * 0.72, 3)
+    long_obstacles = [
+        f"{name} (${lvl}, jarak +{round(lvl - price, 3)})"
+        for name, lvl in res_levels.items()
+        if 0.08 < (lvl - price) < min_clear_room
+    ]
+    short_obstacles = [
+        f"{name} (${lvl}, jarak -{round(price - lvl, 3)})"
+        for name, lvl in sup_levels.items()
+        if 0.08 < (price - lvl) < min_clear_room
+    ]
+    
+    if long_obstacles:
+        allow_long = False
+    if short_obstacles:
+        allow_short = False
+
+    return {
+        "vol_status": vol_status,
+        "vol_note": vol_note,
+        "struct_note": struct_note,
+        "poi_valid": poi_valid,
+        "poi_note": poi_note,
+        "long_obstacles": long_obstacles,
+        "short_obstacles": short_obstacles,
+        "allow_long": allow_long,
+        "allow_short": allow_short
+    }
 
 def monitor_active_trade(cfg, metrics):
     trade = cfg.get("active_trade")
@@ -397,7 +608,6 @@ def monitor_active_trade(cfg, metrics):
     stats = cfg["stats"]
     alerts = []
 
-    # Susun daftar candle sejak waktu entry secara kronologis
     relevant_candles = [
         c for c in metrics.get("candle_history", [])
         if c["t"] >= entry_open_time
@@ -406,7 +616,6 @@ def monitor_active_trade(cfg, metrics):
         relevant_candles = [{"t": entry_open_time + 1, "h": curr_price, "l": curr_price, "c": curr_price}]
 
     for c in relevant_candles:
-        # Pada candle yang sama saat sinyal terbit, gunakan harga penutupan/terkini agar wick sebelum entry tidak memicu false alarm
         if c["t"] == entry_open_time:
             bar_high = curr_price
             bar_low = curr_price
@@ -534,47 +743,58 @@ def monitor_active_trade(cfg, metrics):
         f"• Target TP: `${tp_price}`\n"
         f"• Stop Loss: {sl_note}\n"
         f"• Trigger 1:1 BEP: `${bep_trigger}` ({'Tercapai ✅' if bep_moved else 'Menunggu'})\n"
-        f"• Alasan Awal: _{trade.get('reason', '-')}_"
+        f"• Alasan Entry: _{trade.get('reason', '-')}_"
     )
     return cfg, "STILL_RUNNING", status_msg
 
-def build_prompt(current_price, market_summary, cfg):
+def build_prompt(current_price, market_summary, gates, cfg):
     tp_val = cfg['tp']
     sl_val = cfg['sl']
     return f"""
-    You are an autonomous 5-minute timeframe quantitative crypto futures analyst following the user's strict trading skill.
-    
-    LIVE MARKET & INDICATOR DATA:
+    You are an elite institutional quantitative crypto futures analyst for SOL/USDT (5m & 15m momentum execution).
+    Your job is to PROTECT CAPITAL and FILTER OUT low-probability trades. Your default decision MUST be "WAIT" unless ALL 6 analytical gates pass cleanly.
+
+    LIVE MULTI-TIMEFRAME MARKET DATA:
     {market_summary}
 
-    USER'S STRATEGY RULES:
+    PRE-COMPUTED QUANTITATIVE GATE AUDIT:
+    - Volatility Status: {gates['vol_status']} ({gates['vol_note']})
+    - Structure Dominance Check: {gates['struct_note']}
+    - Entry Zone (POI) Check: {gates['poi_note']}
+    - Obstacles Blocking LONG TP (+{tp_val}): {gates['long_obstacles'] if gates['long_obstacles'] else 'Jalur bersih'}
+    - Obstacles Blocking SHORT TP (-{tp_val}): {gates['short_obstacles'] if gates['short_obstacles'] else 'Jalur bersih'}
+    - Hard Gate Permissions -> allow_long={gates['allow_long']}, allow_short={gates['allow_short']}
+
+    USER STRATEGY RULES:
     {cfg['strategy']}
 
-    MANDATORY STEP-BY-STEP VERIFICATION BEFORE DECIDING:
-    - Step 1 (Trend & Structure): Compare 1H trend with 5M structure (HH/HL vs LH/LL). Never fight a strong trend unless Spot CVD strongly surges against it AND a new structure break is confirmed.
-    - Step 2 (Adaptive Indicator Check):
-      * If TRENDING: Check EMA alignment (9, 10, 20, 30, 50, 200) and pullback/breakout confirmation.
-      * If SIDEWAYS: Check Bollinger Bands (Upper/Mid/Lower) bounce and Swing High/Low boundaries.
-    - Step 3 (Momentum & Order Flow Confirmation): Verify SMI vs SMI Signal crossover and Spot CVD (5m & 15m).
-    - Step 4 (Final Trigger): If ANY required confirmation is missing or price is in a neutral "no man's land", you MUST output "WAIT". Only output "LONG" or "SHORT" when all rules pass right now.
+    STRICT DECISION RULES:
+    1. If allow_long is false, you MUST NOT output LONG. If allow_short is false, you MUST NOT output SHORT.
+    2. Even if 1H is bearish, if 5m or 15m is forming bullish structure (HH/HL), NEVER output SHORT—wait for clear 5m & 15m bearish structure confirmation. Same in reverse for LONG.
+    3. Never enter at random mid-range prices. Explain the exact technical Point of Interest (POI) for entry and confirm why SL ({sl_val} pts) is structurally protected behind a candle wick or EMA/Swing level.
+    4. Require clear candlestick confirmation (e.g., rejection pinbar, momentum close, or engulfing with volume >= 1.0x average). Reject weak Doji/indecision candles.
+    5. Verify SMI crossover and Spot CVD (5m & 15m) momentum alignment.
 
     RISK MANAGEMENT:
-    - If LONG: take_profit = {round(current_price + tp_val, 3)}, stop_loss = {round(current_price - sl_val, 3)}
-    - If SHORT: take_profit = {round(current_price - tp_val, 3)}, stop_loss = {round(current_price + sl_val, 3)}
+    - LONG: take_profit = {round(current_price + tp_val, 3)}, stop_loss = {round(current_price - sl_val, 3)}
+    - SHORT: take_profit = {round(current_price - tp_val, 3)}, stop_loss = {round(current_price + sl_val, 3)}
 
     Output strictly valid JSON without markdown fences:
     {{
       "signal": "WAIT" | "LONG" | "SHORT",
-      "market_regime": "TRENDING" | "SIDEWAYS",
-      "step_by_step_check": {{
-        "step1_trend_structure": "<Lulus/Gagal + penjelasan singkat>",
-        "step2_adaptive_indicator": "<Lulus/Gagal + penjelasan singkat>",
-        "step3_momentum_cvd": "<Lulus/Gagal + penjelasan singkat>"
+      "market_regime": "TRENDING" | "SIDEWAYS" | "CHOPPY_EXTREME",
+      "audit_6_gates": {{
+        "gate1_volatility_sl": "<Lulus/Gagal + alasan ATR vs SL 0.23>",
+        "gate2_mtf_structure": "<Lulus/Gagal + keselarasan 5m, 15m, dan 1H>",
+        "gate3_entry_zone_poi": "<Lulus/Gagal + area entry & posisi SL>",
+        "gate4_tp_clearance": "<Lulus/Gagal + ada/tidaknya halangan S/R menuju TP 0.60>",
+        "gate5_candlestick_vol": "<Lulus/Gagal + bentuk candle & rasio volume>",
+        "gate6_smi_cvd": "<Lulus/Gagal + arah SMI & Spot CVD>"
       }},
       "entry_price": {current_price},
       "take_profit": <number>,
       "stop_loss": <number>,
-      "reasoning": "<Kesimpulan Bahasa Indonesia kenapa ENTRY sekarang atau kenapa masih WAIT>"
+      "reasoning": "<Kesimpulan tajam Bahasa Indonesia kenapa ENTRY valid di titik ini atau kenapa wajib WAIT>"
     }}
     """
 
@@ -595,8 +815,16 @@ def call_gemini(model_name, prompt):
 
 def discover_active_google_models():
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
-    blocked = ["2.5", "2.0", "1.5", "1.0", "embedding", "imagen", "veo", "tts", "aqa", "robotics", "computer-use", "deep-research", "vision"]
-    candidates = ["gemini-3.1-flash-lite-preview", "gemini-3.1-pro-preview"]
+    blocked = ["2.5", "2.0", "1.5", "1.0", "embedding", "imagen", "veo", "tts", "aqa", "robotics", "computer-use", "deep-research", "vision", "live", "transcribe", "omni"]
+    
+    # Prioritas Utama: Gemini 4 Hydrogen sebagai otak #1
+    candidates = [
+        "gemini-4-hydrogen",
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite-preview"
+    ]
     
     try:
         res = requests.get(url, timeout=15).json()
@@ -607,12 +835,12 @@ def discover_active_google_models():
             if "generateContent" in methods and not any(b in name.lower() for b in blocked):
                 available.append(name)
         
-        for prefix in ["gemini-3.1", "gemini-3", "gemma-3", "gemini"]:
+        for prefix in ["gemini-4-hydrogen", "gemini-4-argon", "gemini-3.8", "gemini-3.6", "gemini-3.5", "gemini-3.1", "gemma-3"]:
             for name in available:
                 if name.startswith(prefix) and name not in candidates:
                     candidates.append(name)
     except Exception:
-        for fallback in ["gemini-3-flash-preview", "gemma-3-27b-it", "gemma-3-12b-it"]:
+        for fallback in ["gemma-3-27b-it", "gemma-3-12b-it"]:
             if fallback not in candidates:
                 candidates.append(fallback)
                 
@@ -622,88 +850,98 @@ def call_backup_ai(prompt):
     if not BACKUP_AI_API_KEY:
         raise Exception("BACKUP_AI_API_KEY belum diisi.")
     headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {BACKUP_AI_API_KEY}'}
-    payload = {"model": BACKUP_AI_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
+    payload = {"model": BACKUP_AI_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.15}
     response = requests.post(BACKUP_AI_URL, headers=headers, json=payload, timeout=60)
     data = response.json()
     if response.status_code != 200:
         raise Exception(f"[Backup AI] HTTP {response.status_code}: {data}")
     return data['choices'][0]['message']['content']
 
-def local_quant_fallback(m, cfg):
+def local_quant_fallback(m, gates, cfg):
     price = m["price"]
     tp_val, sl_val = cfg["tp"], cfg["sl"]
-    ema9, ema21, ema50 = m["ema9"], m["ema20"], m["ema50"]
-    bb_up, bb_low = m["bb_upper"], m["bb_lower"]
-    smi, smi_sig = m["smi"], m["smi_signal"]
-    cvd15 = m["cvd_15m"]
-    
-    is_uptrend = m["structure_trend"] == 1.0 and ema9 > ema21 > ema50
-    is_downtrend = m["structure_trend"] == -1.0 and ema9 < ema21 < ema50
     
     signal = "WAIT"
-    regime = "TRENDING" if (is_uptrend or is_downtrend) else "SIDEWAYS"
+    regime = "CHOPPY_EXTREME" if gates["vol_status"] != "OPTIMAL" else ("TRENDING" if m["struct_5m"] != 0 else "SIDEWAYS")
     tp_p = round(price + tp_val, 3)
     sl_p = round(price - sl_val, 3)
-    reason = f"Menunggu konfirmasi penuh. Harga ${price}, Struktur: {m['structure_label']}, SMI: {smi}/{smi_sig}, CVD 15m: ${cvd15:+,.0f}."
+    reason = f"Saringan ketat aktif: {gates['vol_note']} {gates['struct_note']}"
 
-    if is_uptrend and m["last_low"] <= ema9 and price > ema9 and smi > smi_sig and cvd15 > 0:
-        signal = "LONG"
-        reason = f"Lulus 3 tahap: Uptrend selaras (EMA9>20>50), pullback rejection di EMA 9 (${ema9}), SMI bullish ({smi}), CVD 15m positif (${cvd15:+,.0f})."
-    elif is_downtrend and m["last_high"] >= ema9 and price < ema9 and smi < smi_sig and cvd15 < 0:
-        signal = "SHORT"
-        tp_p = round(price - tp_val, 3)
-        sl_p = round(price + sl_val, 3)
-        reason = f"Lulus 3 tahap: Downtrend selaras (EMA9<20<50), rejection di EMA 9 (${ema9}), SMI bearish ({smi}), CVD 15m negatif (${cvd15:+,.0f})."
-    elif not is_uptrend and not is_downtrend:
-        if price <= bb_low * 1.001 and smi <= -55 and smi > smi_sig:
+    c_prev = m["prev_candle"]
+    c_curr = m["curr_candle"]
+    strong_bull_candle = (c_prev["dir"] == "BULLISH" and c_prev["vol_ratio"] >= 1.0) or (c_curr["dir"] == "BULLISH" and c_curr["body_pct"] >= 55)
+    strong_bear_candle = (c_prev["dir"] == "BEARISH" and c_prev["vol_ratio"] >= 1.0) or (c_curr["dir"] == "BEARISH" and c_curr["body_pct"] >= 55)
+
+    if gates["allow_long"] and m["struct_5m"] == 1.0 and m["struct_15m"] == 1.0:
+        if m["ema9"] > m["ema20"] > m["ema50"] and price > m["ema9"] and m["smi"] > m["smi_signal"] and m["cvd_15m"] > 0 and strong_bull_candle:
             signal = "LONG"
-            reason = f"Pasar Sideways: Pantulan Lower BB (${bb_low}) terkonfirmasi persilangan naik SMI ({smi} > {smi_sig})."
-        elif price >= bb_up * 0.999 and smi >= 55 and smi < smi_sig:
+            reason = f"Lulus 6 gerbang kuantitatif: Struktur 5m & 15m selaras Uptrend, harga memantul di atas EMA 9 (${m['ema9']}), candle bullish terkonfirmasi, SMI & CVD 15m positif."
+    elif gates["allow_short"] and m["struct_5m"] == -1.0 and m["struct_15m"] == -1.0:
+        if m["ema9"] < m["ema20"] < m["ema50"] and price < m["ema9"] and m["smi"] < m["smi_signal"] and m["cvd_15m"] < 0 and strong_bear_candle:
             signal = "SHORT"
             tp_p = round(price - tp_val, 3)
             sl_p = round(price + sl_val, 3)
-            reason = f"Pasar Sideways: Penolakan Upper BB (${bb_up}) terkonfirmasi persilangan turun SMI ({smi} < {smi_sig})."
+            reason = f"Lulus 6 gerbang kuantitatif: Struktur 5m & 15m selaras Downtrend, harga tertolak di bawah EMA 9 (${m['ema9']}), candle bearish terkonfirmasi, SMI & CVD 15m negatif."
 
     res = {
         "signal": signal,
         "market_regime": regime,
-        "step_by_step_check": {
-            "step1_trend_structure": m["structure_label"],
-            "step2_adaptive_indicator": f"EMA9 ${ema9} / BB ${bb_low}-${bb_up}",
-            "step3_momentum_cvd": f"SMI {smi} vs {smi_sig}, CVD 15m ${cvd15:+,.0f}"
+        "audit_6_gates": {
+            "gate1_volatility_sl": gates["vol_note"],
+            "gate2_mtf_structure": gates["struct_note"],
+            "gate3_entry_zone_poi": gates["poi_note"],
+            "gate4_tp_clearance": f"Halangan LONG: {gates['long_obstacles'] or 'Bersih'} | SHORT: {gates['short_obstacles'] or 'Bersih'}",
+            "gate5_candlestick_vol": f"Prev: {c_prev['pattern']} (Vol {c_prev['vol_ratio']}x) | Curr: {c_curr['pattern']}",
+            "gate6_smi_cvd": f"SMI 5m {m['smi']}/{m['smi_signal']}, CVD 15m ${m['cvd_15m']:+,.0f}"
         },
         "entry_price": price,
         "take_profit": tp_p,
         "stop_loss": sl_p,
         "reasoning": reason
     }
-    return res, "Argon-Quant-Engine"
+    return res, "Argon-Quant-6Gate"
 
-def analyze_market_with_fallback(current_price, market_summary, metrics, cfg):
-    prompt = build_prompt(current_price, market_summary, cfg)
+def analyze_market_with_fallback(current_price, market_summary, metrics, gates, cfg):
+    prompt = build_prompt(current_price, market_summary, gates, cfg)
     candidates = discover_active_google_models()
+
+    ai_result = None
+    used_engine = None
 
     for model_name in candidates:
         try:
             raw = call_gemini(model_name, prompt)
             clean = raw.replace("```json", "").replace("```", "").strip()
-            parsed = json.loads(clean)
-            return parsed, model_name
+            ai_result = json.loads(clean)
+            used_engine = model_name
+            break
         except Exception as e:
             print(f"Lewati {model_name}: {e}")
             if "503" in str(e):
                 time.sleep(2)
 
-    if BACKUP_AI_API_KEY:
+    if ai_result is None and BACKUP_AI_API_KEY:
         try:
             raw = call_backup_ai(prompt)
             clean = raw.replace("```json", "").replace("```", "").strip()
-            parsed = json.loads(clean)
-            return parsed, f"Backup ({BACKUP_AI_MODEL})"
+            ai_result = json.loads(clean)
+            used_engine = f"Backup ({BACKUP_AI_MODEL})"
         except Exception as e:
             print(f"Lewati Backup AI: {e}")
 
-    return local_quant_fallback(metrics, cfg)
+    if ai_result is None:
+        ai_result, used_engine = local_quant_fallback(metrics, gates, cfg)
+
+    # Pengaman Mutlak Python: Jika saringan keras menolak arah tersebut, paksa WAIT
+    sig = str(ai_result.get("signal", "WAIT")).upper()
+    if sig == "LONG" and not gates["allow_long"]:
+        ai_result["signal"] = "WAIT"
+        ai_result["reasoning"] = f"[Diblokir Saringan Ketat] {gates['vol_note']} {gates['struct_note']} {gates['poi_note']}"
+    elif sig == "SHORT" and not gates["allow_short"]:
+        ai_result["signal"] = "WAIT"
+        ai_result["reasoning"] = f"[Diblokir Saringan Ketat] {gates['vol_note']} {gates['struct_note']} {gates['poi_note']}"
+
+    return ai_result, used_engine
 
 if __name__ == "__main__":
     config = load_config()
@@ -723,9 +961,10 @@ if __name__ == "__main__":
                 print("Mode Hening: Posisi aktif masih berjalan normal.")
                 
         else:
-            ai_data, used_model = analyze_market_with_fallback(price, market_summary, metrics, config)
+            gates = evaluate_quant_gates(metrics, config)
+            ai_data, used_model = analyze_market_with_fallback(price, market_summary, metrics, gates, config)
             sig = str(ai_data.get("signal", "WAIT")).upper()
-            steps = ai_data.get("step_by_step_check", {})
+            audit = ai_data.get("audit_6_gates", {})
             reason = ai_data.get("reasoning", "-")
             regime = ai_data.get("market_regime", "-")
             
@@ -751,38 +990,42 @@ if __name__ == "__main__":
                 
                 status_trade = "🟢 ON (LIVE)" if config["live_trading"] else "🔴 OFF (Dry Run)"
                 msg = (
-                    f"🚨 *SINYAL ENTRY TERKONFIRMASI: {sig}*\n"
+                    f"🚨 *SINYAL ENTRY TERKONFIRMASI (LOLOS 6 GERBANG): {sig}*\n"
                     f"🤖 Engine: `{used_model}` | Rezim: `{regime}`\n"
                     f"⚙️ Eksekusi: `{status_trade}`\n\n"
                     f"• *Entry:* `${price}`\n"
                     f"• *Take Profit:* `${tp_price}` (`+{tp_dist} poin`)\n"
                     f"• *Stop Loss:* `${sl_price}` (`-{sl_dist} poin`)\n"
                     f"• *Target 1:1 Pindah SL:* `${bep_trigger}`\n\n"
-                    f"🔍 *Audit Strategi Bertahap:*\n"
-                    f"1️⃣ Tren & Struktur: {steps.get('step1_trend_structure', '-')}\n"
-                    f"2️⃣ Indikator Adaptif: {steps.get('step2_adaptive_indicator', '-')}\n"
-                    f"3️⃣ Momentum & CVD: {steps.get('step3_momentum_cvd', '-')}\n\n"
-                    f"💡 *Kesimpulan:* {reason}\n\n"
-                    f"_(Bot terus memantau setiap candle 5m untuk memberi tahu saat mencapai 1:1 BEP, TP, atau SL)_"
+                    f"🔍 *Audit 6 Gerbang Strategi:*\n"
+                    f"1️⃣ Volatilitas & SL: {audit.get('gate1_volatility_sl', '-')}\n"
+                    f"2️⃣ Struktur 5m/15m/1H: {audit.get('gate2_mtf_structure', '-')}\n"
+                    f"3️⃣ Area Entry & SL: {audit.get('gate3_entry_zone_poi', '-')}\n"
+                    f"4️⃣ Jalur TP 0.60: {audit.get('gate4_tp_clearance', '-')}\n"
+                    f"5️⃣ Candle & Volume: {audit.get('gate5_candlestick_vol', '-')}\n"
+                    f"6️⃣ SMI & Spot CVD: {audit.get('gate6_smi_cvd', '-')}\n\n"
+                    f"💡 *Kesimpulan:* {reason}"
                 )
                 send_telegram(msg)
                 
             else:
                 if is_manual_scan:
                     msg = (
-                        f"⏸️ *STATUS: WAIT (MENUNGGU KONFIRMASI)*\n"
+                        f"⏸️ *STATUS: WAIT (DISARING OLEH 6 GERBANG)*\n"
                         f"🤖 Engine: `{used_model}` | Rezim: `{regime}`\n"
-                        f"💲 Harga SOL Saat Ini: `${price}`\n\n"
-                        f"🔍 *Hasil Uji Strategi Bertahap:*\n"
-                        f"1️⃣ Tren & Struktur: {steps.get('step1_trend_structure', '-')}\n"
-                        f"2️⃣ Indikator Adaptif: {steps.get('step2_adaptive_indicator', '-')}\n"
-                        f"3️⃣ Momentum & CVD: {steps.get('step3_momentum_cvd', '-')}\n\n"
-                        f"💡 *Alasan Belum Entry:* {reason}\n\n"
-                        f"_(Mode Hening aktif: Bot tidak mengirim notif setiap 5 menit selama status masih WAIT)_"
+                        f"💲 Harga SOL Saat Ini: `${price}` (ATR 5m: `{metrics['atr_5m']}`)\n\n"
+                        f"🔍 *Hasil Audit 6 Gerbang:*\n"
+                        f"1️⃣ Volatilitas & SL: {audit.get('gate1_volatility_sl', '-')}\n"
+                        f"2️⃣ Struktur 5m/15m/1H: {audit.get('gate2_mtf_structure', '-')}\n"
+                        f"3️⃣ Area Entry & SL: {audit.get('gate3_entry_zone_poi', '-')}\n"
+                        f"4️⃣ Jalur TP 0.60: {audit.get('gate4_tp_clearance', '-')}\n"
+                        f"5️⃣ Candle & Volume: {audit.get('gate5_candlestick_vol', '-')}\n"
+                        f"6️⃣ SMI & Spot CVD: {audit.get('gate6_smi_cvd', '-')}\n\n"
+                        f"💡 *Alasan Menunggu:* {reason}"
                     )
                     send_telegram(msg)
                 else:
-                    print("Mode Hening: Setup masih WAIT.")
+                    print("Mode Hening: Setup belum lolos 6 gerbang (WAIT).")
 
     except Exception as e:
         print(f"Error siklus: {e}")
