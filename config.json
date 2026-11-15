@@ -8,10 +8,10 @@
     "direction": "SHORT",
     "entry_price": 72.45,
     "tp_price": 71.85,
-    "sl_price": 72.68,
+    "sl_price": 72.45,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 72.22,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1794751200000,
     "entry_time": "15/11 21:00 WIB",
     "reason": "Harga telah menembus support penting di 72.44 dan berada di bawah jajaran EMA 5m. CVD 15 menit menunjukkan tekanan jual yang masif (-$368k). Momentum SMI berada di area bearish dan belum ada tanda pembalikan arah, mendukung posisi SHORT sesuai dengan konfirmasi jebolnya struktur harga."
