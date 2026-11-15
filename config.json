@@ -4,7 +4,18 @@
   "sl": 0.23,
   "strategy": "1. Volatilitas (ATR 5m): Tolak entry jika volatilitas terlalu ekstrem (SL 0.23 rawan tersapu noise) atau market terlalu mati/sepi untuk mengejar TP 0.60. 2. Dominasi Struktur 5m & 15m: Walaupun tren 1H turun, DILARANG SHORT jika 5m/15m masih membentuk struktur naik (HH/HL), tunggu konfirmasi struktur turun yang jelas (berlaku sebaliknya untuk LONG). 3. Area Entry Presisi: Wajib entry di area kunci (EMA 9/20/50, BB extreme, atau breakout-retest struktur), dilarang entry di harga tanggung/tengah. 4. Jalur TP Bersih: Pastikan tidak ada tembok Support/Resistance besar (Swing 5m/15m/1H atau EMA 200) yang menghalangi jalur menuju TP 0.60. 5. Konfirmasi Candlestick & SL Aman: Wajib ada konfirmasi bentuk candle (rejection wick / engulfing / momentum close) dengan volume kuat, dan posisi SL 0.23 harus terlindung di balik struktur/ekor candle. 6. Momentum & Order Flow: SMI dan Spot CVD (5m & 15m) wajib searah.",
   "last_update_id": 698291167,
-  "active_trade": null,
+  "active_trade": {
+    "direction": "LONG",
+    "entry_price": 72.68,
+    "tp_price": 73.28,
+    "sl_price": 72.45,
+    "initial_sl_dist": 0.23,
+    "bep_trigger_price": 72.91,
+    "bep_moved": false,
+    "entry_open_time": 1794783600000,
+    "entry_time": "16/11 06:00 WIB",
+    "reason": "Seluruh 6 gerbang kuantitatif terpenuhi secara sempurna. Struktur multi-timeframe (5m, 15m, 1H) selaras uptrend dengan dorongan Spot CVD institusional yang konsisten positif. Candle breakout momentum 5m terkonfirmasi volume di atas rata-rata, memberikan konfirmasi entry LONG menuju likuiditas 1H Swing High dengan SL yang terlindungi."
+  },
   "stats": {
     "total_closed": 0,
     "tp_hit": 0,
