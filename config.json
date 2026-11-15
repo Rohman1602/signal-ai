@@ -1,15 +1,15 @@
 {
   "live_trading": false,
-  "tp": 0.6,
+  "tp": 0.60,
   "sl": 0.23,
-  "strategy": "1. Anti-Menebak & Ikuti Tren: Selaraskan arah 5m dengan tren 1h. Dilarang melawan tren kuat kecuali ada lonjakan CVD berlawanan arah + konfirmasi struktur baru (HH/HL atau LH/LL) + divergensi SMI. 2. Pasar Trending: Fokus pada struktur HH/HL/LH/LL, susunan EMA (9, 10, 20, 30, 50, 200), dan dorongan CVD. 3. Pasar Sideways: Fokus pada pantulan Bollinger Bands (Upper/Mid/Lower), Swing High/Low, dan persilangan SMI. 4. Jika harga di zona tanggung/tanpa konfirmasi jelas, pilih WAIT.",
-  "last_update_id": 698291159,
+  "strategy": "1. Volatilitas (ATR 5m): Tolak entry jika volatilitas terlalu ekstrem (SL 0.23 rawan tersapu noise) atau market terlalu mati/sepi untuk mengejar TP 0.60. 2. Dominasi Struktur 5m & 15m: Walaupun tren 1H turun, DILARANG SHORT jika 5m/15m masih membentuk struktur naik (HH/HL), tunggu konfirmasi struktur turun yang jelas (berlaku sebaliknya untuk LONG). 3. Area Entry Presisi: Wajib entry di area kunci (EMA 9/20/50, BB extreme, atau breakout-retest struktur), dilarang entry di harga tanggung/tengah. 4. Jalur TP Bersih: Pastikan tidak ada tembok Support/Resistance besar (Swing 5m/15m/1H atau EMA 200) yang menghalangi jalur menuju TP 0.60. 5. Konfirmasi Candlestick & SL Aman: Wajib ada konfirmasi bentuk candle (rejection wick / engulfing / momentum close) dengan volume kuat, dan posisi SL 0.23 harus terlindung di balik struktur/ekor candle. 6. Momentum & Order Flow: SMI dan Spot CVD (5m & 15m) wajib searah.",
+  "last_update_id": 0,
   "active_trade": null,
   "stats": {
-    "total_closed": 8,
-    "tp_hit": 1,
-    "sl_hit": 5,
-    "bep_hit": 2,
-    "net_points": -0.55
+    "total_closed": 0,
+    "tp_hit": 0,
+    "sl_hit": 0,
+    "bep_hit": 0,
+    "net_points": 0.0
   }
 }
