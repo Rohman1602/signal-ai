@@ -1,6 +1,6 @@
 {
   "live_trading": false,
-  "tp": 0.60,
+  "tp": 0.6,
   "sl": 0.23,
   "strategy": "1. Volatilitas (ATR 5m): Tolak entry jika volatilitas terlalu ekstrem (SL 0.23 rawan tersapu noise) atau market terlalu mati/sepi untuk mengejar TP 0.60. 2. Dominasi Struktur 5m & 15m: Walaupun tren 1H turun, DILARANG SHORT jika 5m/15m masih membentuk struktur naik (HH/HL), tunggu konfirmasi struktur turun yang jelas (berlaku sebaliknya untuk LONG). 3. Area Entry Presisi: Wajib entry di area kunci (EMA 9/20/50, BB extreme, atau breakout-retest struktur), dilarang entry di harga tanggung/tengah. 4. Jalur TP Bersih: Pastikan tidak ada tembok Support/Resistance besar (Swing 5m/15m/1H atau EMA 200) yang menghalangi jalur menuju TP 0.60. 5. Konfirmasi Candlestick & SL Aman: Wajib ada konfirmasi bentuk candle (rejection wick / engulfing / momentum close) dengan volume kuat, dan posisi SL 0.23 harus terlindung di balik struktur/ekor candle. 6. Momentum & Order Flow: SMI dan Spot CVD (5m & 15m) wajib searah.",
   "last_update_id": 0,
