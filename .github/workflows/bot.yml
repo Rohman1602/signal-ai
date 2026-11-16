@@ -24,6 +24,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
           BACKUP_AI_API_KEY: ${{ secrets.BACKUP_AI_API_KEY }}
           BACKUP_AI_URL: ${{ secrets.BACKUP_AI_URL }}
