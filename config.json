@@ -5,25 +5,13 @@
   "strategy": "1. Volatilitas & Batas Candle (ATR 5m): Panjang candle wajar dilonggarkan hingga 35 poin (0.35). Tolak entry hanya jika ATR > 0.35 atau candle > 0.42 (sangat ekstrem), atau market terlalu lambat (ATR < 0.065). 2. Pemilihan Market vs Limit Order: Jika candle panjang (24-35 poin), utamakan LIMIT ORDER di area tengah candle (retracement 40-50% / EMA 9) agar SL 0.23 terlindung di balik ekor candle. Namun, jika AI menilai tren/pantulan dari support-resistance kunci sangat kuat dan aman dari risiko berbalik > 0.23 poin, MARKET ORDER diperbolehkan. 3. Dominasi Struktur 5m & 15m: Dilarang melawan struktur 5m/15m yang sedang terbentuk meski 1H berlawanan. 4. Jalur TP 0.60 Bersih: Pastikan tidak ada halangan S/R besar sebelum TP. 5. Konfirmasi Candlestick, Volume, SMI & Spot CVD (5m & 15m) wajib searah.",
   "last_update_id": 698291186,
   "pending_order": null,
-  "active_trade": {
-    "direction": "LONG",
-    "order_type": "MARKET",
-    "entry_price": 75.23,
-    "tp_price": 75.83,
-    "sl_price": 75.0,
-    "initial_sl_dist": 0.23,
-    "bep_trigger_price": 75.46,
-    "bep_moved": false,
-    "entry_open_time": 1794996000000,
-    "entry_time": "18/11 17:01 WIB",
-    "reason": "Semua gate lolos. Struktur uptrend, momentum kuat, CVD positif, dan target TP bersih."
-  },
+  "active_trade": null,
   "stats": {
-    "total_closed": 1,
+    "total_closed": 2,
     "tp_hit": 0,
-    "sl_hit": 0,
+    "sl_hit": 1,
     "bep_hit": 1,
     "cancelled_limits": 0,
-    "net_points": 0.0
+    "net_points": -0.23
   }
 }
