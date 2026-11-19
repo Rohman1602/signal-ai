@@ -1,17 +1,17 @@
 {
   "live_trading": false,
-  "tp": 0.6,
+  "tp": 0.60,
   "sl": 0.23,
-  "strategy": "1. Volatilitas & Batas Candle (ATR 5m): Panjang candle wajar dilonggarkan hingga 35 poin (0.35). Tolak entry hanya jika ATR > 0.35 atau candle > 0.42 (sangat ekstrem), atau market terlalu lambat (ATR < 0.065). 2. Pemilihan Market vs Limit Order: Jika candle panjang (24-35 poin), utamakan LIMIT ORDER di area tengah candle (retracement 40-50% / EMA 9) agar SL 0.23 terlindung di balik ekor candle. Namun, jika AI menilai tren/pantulan dari support-resistance kunci sangat kuat dan aman dari risiko berbalik > 0.23 poin, MARKET ORDER diperbolehkan. 3. Dominasi Struktur 5m & 15m: Dilarang melawan struktur 5m/15m yang sedang terbentuk meski 1H berlawanan. 4. Jalur TP 0.60 Bersih: Pastikan tidak ada halangan S/R besar sebelum TP. 5. Konfirmasi Candlestick, Volume, SMI & Spot CVD (5m & 15m) wajib searah.",
-  "last_update_id": 698291186,
+  "strategy": "1. Anti-Pucuk & Anti-Dasar (Wajib Pullback + Candle Konfirmasi): SHORT hanya valid setelah harga naik dulu ke area garis EMA (9/10/20/21/30/50/200), Bollinger Band atas/tengah, atau resistance struktur lalu muncul candle konfirmasi penolakan turun; dilarang SHORT saat harga sudah di bawah/dekat support bawah yang rawan pantulan beli menyapu SL. LONG hanya valid setelah harga turun dulu menginjak garis EMA, Bollinger Band bawah/tengah, atau support struktur lalu muncul candle konfirmasi pantulan naik; dilarang LONG saat harga sudah di pucuk/dekat resistance atas. 2. Indikator Adaptif: Saat TRENDING, utamakan struktur pasar, reaksi/pijakan garis EMA, dan CVD/volume (SMI tidak dipakai sebagai penahan palsu saat tren kuat). Saat SIDEWAYS, utamakan batas Bollinger Bands, swing high/low, dan SMI. 3. Tetap terapkan filter volatilitas/ATR, dominasi struktur 5m/15m, dan jalur TP 0.60 yang bebas halangan S/R besar.",
+  "last_update_id": 0,
   "pending_order": null,
   "active_trade": null,
   "stats": {
-    "total_closed": 5,
+    "total_closed": 0,
     "tp_hit": 0,
-    "sl_hit": 3,
-    "bep_hit": 2,
-    "cancelled_limits": 1,
-    "net_points": -0.69
+    "sl_hit": 0,
+    "bep_hit": 0,
+    "cancelled_limits": 0,
+    "net_points": 0.0
   }
 }
