@@ -30,11 +30,9 @@ def load_config():
         "tp": 0.60,
         "sl": 0.23,
         "strategy": (
-            "1. Volatilitas & Batas Candle: Panjang candle wajar hingga 35 poin (0.35). Tolak entry jika ATR > 0.35 atau candle > 0.42 (sangat ekstrem), atau market terlalu lambat (ATR < 0.065). "
-            "2. Market vs Limit Order: Jika candle 24-35 poin, utamakan LIMIT ORDER di area tengah candle (retracement 40-50% / EMA 9) agar SL 0.23 aman di balik ekor candle. Jika momentum dari S/R kunci sangat kuat dan SL 0.23 dinilai aman, MARKET ORDER diperbolehkan. "
-            "3. Dominasi Struktur 5m & 15m: Dilarang melawan struktur 5m/15m yang sedang terbentuk meski 1H berlawanan. "
-            "4. Jalur TP 0.60 Bersih dari halangan S/R besar. "
-            "5. Konfirmasi Candlestick, Volume, SMI & Spot CVD (5m & 15m) wajib searah."
+            "1. Anti-Pucuk & Anti-Dasar (Wajib Pullback + Candle Konfirmasi): SHORT hanya valid setelah harga naik dulu ke area garis EMA (9/10/20/21/30/50/200), Bollinger Band atas/tengah, atau resistance struktur lalu muncul candle konfirmasi penolakan turun; dilarang SHORT saat harga sudah di bawah/dekat support bawah. LONG hanya valid setelah harga turun dulu menginjak garis EMA, Bollinger Band bawah/tengah, atau support struktur lalu muncul candle konfirmasi pantulan naik; dilarang LONG saat harga sudah di pucuk/dekat resistance atas. "
+            "2. Indikator Adaptif: Saat TRENDING, utamakan struktur pasar, reaksi/pijakan garis EMA, dan CVD/volume (SMI tidak dipakai sebagai penahan palsu saat tren kuat). Saat SIDEWAYS, utamakan batas Bollinger Bands, swing high/low, dan SMI. "
+            "3. Terapkan batas volatilitas/ATR, dominasi struktur 5m/15m, dan jalur TP 0.60 yang bebas halangan S/R besar."
         ),
         "last_update_id": 0,
         "pending_order": None,
@@ -122,7 +120,7 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON BOT*"):
             f"   TP: `${pending['tp_price']}` | SL: `${pending['sl_price']}`"
         )
     else:
-        pos_info = f"📌 *STATUS POSISI:* `Kosong (API Google: {len(GEMINI_API_KEYS)} akun | Max ATR: 0.35)`"
+        pos_info = f"📌 *STATUS POSISI:* `Kosong (API Google: {len(GEMINI_API_KEYS)} akun | Pullback + Rejection Aktif)`"
 
     text = (
         f"{header}\n\n"
@@ -334,17 +332,19 @@ def analyze_candle_anatomy(o, h, l, c, v, avg_v):
     pattern = "Normal"
     if body_pct <= 25:
         pattern = "Doji / Indecision"
-    elif lower_wick_pct >= 50 and c >= o:
-        pattern = "Bullish Rejection Pinbar"
-    elif upper_wick_pct >= 50 and c <= o:
-        pattern = "Bearish Rejection Pinbar"
-    elif body_pct >= 65 and direction == "BULLISH":
-        pattern = "Strong Bullish Momentum"
-    elif body_pct >= 65 and direction == "BEARISH":
-        pattern = "Strong Bearish Momentum"
+    elif lower_wick_pct >= 45 and c >= o:
+        pattern = "Bullish Rejection (Lower Wick)"
+    elif upper_wick_pct >= 45 and c <= o:
+        pattern = "Bearish Rejection (Upper Wick)"
+    elif body_pct >= 60 and direction == "BULLISH":
+        pattern = "Bullish Momentum Candle"
+    elif body_pct >= 60 and direction == "BEARISH":
+        pattern = "Bearish Momentum Candle"
         
     return {
         "dir": direction,
+        "open": round(o, 3),
+        "close": round(c, 3),
         "high": round(h, 3),
         "low": round(l, 3),
         "mid": round((h + l) / 2.0, 3),
@@ -357,7 +357,7 @@ def analyze_candle_anatomy(o, h, l, c, v, avg_v):
     }
 
 def fetch_market_data():
-    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Bot/4.0'}
+    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Bot/4.1'}
     
     url_5m = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=5m&limit=220"
     res_5m = requests.get(url_5m, headers=headers, timeout=15)
@@ -380,6 +380,7 @@ def fetch_market_data():
     ema9 = round(calc_ema_series(closes, 9)[-1], 3)
     ema10 = round(calc_ema_series(closes, 10)[-1], 3)
     ema20 = round(calc_ema_series(closes, 20)[-1], 3)
+    ema21 = round(calc_ema_series(closes, 21)[-1], 3)
     ema30 = round(calc_ema_series(closes, 30)[-1], 3)
     ema50 = round(calc_ema_series(closes, 50)[-1], 3)
     ema200 = round(calc_ema_series(closes, 200)[-1], 3)
@@ -406,7 +407,7 @@ def fetch_market_data():
     curr_candle_anatomy = analyze_candle_anatomy(opens[-1], highs[-1], lows[-1], closes[-1], vols[-1], avg_vol_20)
     
     struct_15m, struct_15m_label, sh_15m, sl_15m = 0.0, "TIDAK TERSEDIA", sh_5m, sl_5m
-    ema9_15m, ema20_15m, ema50_15m, ema200_15m = ema9, ema20, ema50, ema200
+    ema9_15m, ema20_15m, ema21_15m, ema50_15m, ema200_15m = ema9, ema20, ema21, ema50, ema200
     smi_15m, smi_sig_15m = smi_5m, smi_sig_5m
     atr_15m = atr_5m
     try:
@@ -420,6 +421,7 @@ def fetch_market_data():
             struct_15m, struct_15m_label, sh_15m, sl_15m = detect_structure(h15, l15, 20)
             ema9_15m = round(calc_ema_series(c15, 9)[-1], 3)
             ema20_15m = round(calc_ema_series(c15, 20)[-1], 3)
+            ema21_15m = round(calc_ema_series(c15, 21)[-1], 3)
             ema50_15m = round(calc_ema_series(c15, 50)[-1], 3)
             ema200_15m = round(calc_ema_series(c15, 200)[-1], 3)
             smi_15m, smi_sig_15m = calc_smi_series(h15, l15, c15, 10, 3, 3)
@@ -458,8 +460,8 @@ def fetch_market_data():
         "latest_candle_time": latest_candle_time,
         "candle_history": candle_history,
         "atr_5m": atr_5m, "atr_15m": atr_15m, "bb_width_pct": bb_width_pct,
-        "ema9": ema9, "ema10": ema10, "ema20": ema20, "ema30": ema30, "ema50": ema50, "ema200": ema200,
-        "ema9_15m": ema9_15m, "ema20_15m": ema20_15m, "ema50_15m": ema50_15m, "ema200_15m": ema200_15m,
+        "ema9": ema9, "ema10": ema10, "ema20": ema20, "ema21": ema21, "ema30": ema30, "ema50": ema50, "ema200": ema200,
+        "ema9_15m": ema9_15m, "ema20_15m": ema20_15m, "ema21_15m": ema21_15m, "ema50_15m": ema50_15m, "ema200_15m": ema200_15m,
         "ema20_1h": ema20_1h, "ema50_1h": ema50_1h,
         "bb_upper": bb_upper, "bb_mid": bb_mid, "bb_lower": bb_lower,
         "smi": smi_5m, "smi_signal": smi_sig_5m,
@@ -474,13 +476,13 @@ def fetch_market_data():
     
     summary = (
         f"Asset: SOL/USDT | Current Price: ${current_price}\n"
-        f"Volatility -> 5M ATR(14): {atr_5m} pts (Limit Wajar: 0.35 pts) | 15M ATR(14): {atr_15m} pts | BB Width: {bb_width_pct}%\n"
+        f"Volatility -> 5M ATR(14): {atr_5m} pts (Max Wajar: 0.35 pts) | 15M ATR(14): {atr_15m} pts | BB Width: {bb_width_pct}%\n"
         f"Multi-Timeframe Structure:\n"
         f"  - 5M Structure: {struct_5m_label} (Swing High: ${sh_5m}, Swing Low: ${sl_5m})\n"
         f"  - 15M Structure: {struct_15m_label} (Swing High: ${sh_15m}, Swing Low: ${sl_15m})\n"
         f"  - 1H Macro Trend: {struct_1h_label} (Swing High: ${sh_1h}, Swing Low: ${sl_1h}, EMA20: ${ema20_1h}, EMA50: ${ema50_1h})\n"
-        f"5M EMAs -> EMA9: ${ema9} | EMA10: ${ema10} | EMA20: ${ema20} | EMA30: ${ema30} | EMA50: ${ema50} | EMA200: ${ema200}\n"
-        f"15M EMAs -> EMA9: ${ema9_15m} | EMA20: ${ema20_15m} | EMA50: ${ema50_15m} | EMA200: ${ema200_15m}\n"
+        f"5M EMAs -> EMA9: ${ema9} | EMA10: ${ema10} | EMA20: ${ema20} | EMA21: ${ema21} | EMA30: ${ema30} | EMA50: ${ema50} | EMA200: ${ema200}\n"
+        f"15M EMAs -> EMA9: ${ema9_15m} | EMA20: ${ema20_15m} | EMA21: ${ema21_15m} | EMA50: ${ema50_15m} | EMA200: ${ema200_15m}\n"
         f"Bollinger Bands (5M) -> Upper: ${bb_upper} | Mid: ${bb_mid} | Lower: ${bb_lower}\n"
         f"Momentum (SMI) -> 5M SMI: {smi_5m} (Sig: {smi_sig_5m}) | 15M SMI: {smi_15m} (Sig: {smi_sig_15m})\n"
         f"Spot Order Flow (CVD USDT) -> 5m: ${cvd_5m:+,.0f} | 15m: ${cvd_15m:+,.0f} | 1h: ${cvd_1h:+,.0f}\n"
@@ -495,7 +497,6 @@ def evaluate_quant_gates(m, cfg):
     sl_dist = float(cfg["sl"])
     atr_5m = m["atr_5m"]
     
-    # Batas panjang candle wajar dilonggarkan hingga 35 poin (0.35)
     max_safe_atr = 0.35
     max_candle_rng = 0.42
     min_viable_atr = 0.065
@@ -505,21 +506,21 @@ def evaluate_quant_gates(m, cfg):
     
     vol_status = "OPTIMAL"
     if prefer_limit:
-        vol_note = f"ATR 5m ({atr_5m}) & Range ({candle_rng}) aktif dalam batas wajar (<=0.35). Disarankan LIMIT ORDER ke tengah candle/EMA9 agar SL {sl_dist} aman, atau MARKET jika momentum S/R sangat kuat."
+        vol_note = f"ATR 5m ({atr_5m}) & Range ({candle_rng}) aktif dalam batas wajar (<=0.35). Prioritaskan LIMIT / konfirmasi pullback agar SL {sl_dist} aman."
     else:
-        vol_note = f"ATR 5m ({atr_5m}) & Range ({candle_rng}) tenang & ideal untuk SL {sl_dist} & TP {tp_dist}."
+        vol_note = f"ATR 5m ({atr_5m}) & Range ({candle_rng}) ideal untuk SL {sl_dist} & TP {tp_dist}."
         
     allow_long = True
     allow_short = True
     
     if atr_5m > max_safe_atr or candle_rng > max_candle_rng:
         vol_status = "TERLALU_EKSTREM"
-        vol_note = f"Volatilitas di luar batas wajar (ATR 5m={atr_5m} > 0.35 atau Range={candle_rng} > 0.42). SL {sl_dist} terlalu berisiko."
+        vol_note = f"Volatilitas terlalu ekstrem (ATR 5m={atr_5m} > 0.35 atau Range={candle_rng} > 0.42). SL {sl_dist} rawan tersapu noise."
         allow_long = False
         allow_short = False
     elif atr_5m < min_viable_atr and m["bb_width_pct"] < 0.35:
         vol_status = "TERLALU_LAMBAT"
-        vol_note = f"Market terlalu lambat/sepi (ATR 5m={atr_5m}, BB Width={m['bb_width_pct']}%). Sulit menjangkau TP {tp_dist}."
+        vol_note = f"Market terlalu lambat/sepi (ATR 5m={atr_5m}, BB Width={m['bb_width_pct']}%). Sulit mengejar TP {tp_dist}."
         allow_long = False
         allow_short = False
 
@@ -540,23 +541,66 @@ def evaluate_quant_gates(m, cfg):
             allow_short = False
         struct_note += " -> Pasar sideways, entry hanya valid di tepi ekstrem Bollinger Bands."
 
-    key_levels = [
-        m["ema9"], m["ema20"], m["ema50"], m["ema20_15m"],
+    # Anti-Pucuk & Anti-Dasar + Wajib Pullback/Reaksi pada Garis EMA / BB / S&R
+    ema_cluster_5m = [m["ema9"], m["ema10"], m["ema20"], m["ema21"], m["ema30"], m["ema50"], m["ema200"]]
+    ema_cluster_15m = [m["ema9_15m"], m["ema20_15m"], m["ema21_15m"], m["ema50_15m"], m["ema200_15m"]]
+    all_lines = ema_cluster_5m + ema_cluster_15m + [
         m["bb_upper"], m["bb_mid"], m["bb_lower"],
         m["sh_5m"], m["sl_5m"], m["sh_15m"], m["sl_15m"]
     ]
-    nearest_dist = min(abs(price - lvl) for lvl in key_levels)
-    # Jika memakai Limit Order ke tengah candle, jangkauan area POI lebih fleksibel
-    max_poi_dist = max(0.20, round(atr_5m * 1.25, 3))
-    poi_valid = nearest_dist <= max_poi_dist
-    poi_note = (
-        f"Valid (jarak {round(nearest_dist, 3)} poin dari level kunci terdekat)"
-        if poi_valid else
-        f"Tidak Valid / No Man's Land (jarak {round(nearest_dist, 3)} poin dari level teknikal terdekat)"
+    
+    # Toleransi sentuhan / injak garis teknikal (maksimal 0.14 poin atau 1.15x ATR)
+    line_touch_tol = max(0.14, round(atr_5m * 1.15, 3))
+    touched_lines = [round(lvl, 3) for lvl in all_lines if abs(price - lvl) <= line_touch_tol]
+    
+    # Cek apakah harga sudah terlalu jauh ke bawah (dekat support / lower BB -> rawan buy order menyapu SL SHORT)
+    near_lower_support = (
+        price <= m["bb_lower"] * 1.0015 or
+        abs(price - m["sl_5m"]) <= 0.12 or
+        abs(price - m["sl_15m"]) <= 0.12
     )
-    if not poi_valid:
+    # Cek apakah harga sudah terlalu jauh ke atas (di pucuk / dekat resistance / upper BB -> rawan koreksi menyapu SL LONG)
+    near_upper_resistance = (
+        price >= m["bb_upper"] * 0.9985 or
+        abs(price - m["sh_5m"]) <= 0.12 or
+        abs(price - m["sh_15m"]) <= 0.12
+    )
+
+    c_prev = m["prev_candle"]
+    c_curr = m["curr_candle"]
+    has_bear_rejection = (
+        (c_prev["dir"] == "BEARISH" and (c_prev["upper_wick_pct"] >= 35 or c_prev["body_pct"] >= 50)) or
+        (c_curr["dir"] == "BEARISH" and (c_curr["upper_wick_pct"] >= 35 or c_curr["body_pct"] >= 50))
+    )
+    has_bull_rejection = (
+        (c_prev["dir"] == "BULLISH" and (c_prev["lower_wick_pct"] >= 35 or c_prev["body_pct"] >= 50)) or
+        (c_curr["dir"] == "BULLISH" and (c_curr["lower_wick_pct"] >= 35 or c_curr["body_pct"] >= 50))
+    )
+
+    poi_notes = []
+    if near_lower_support and not (s5 == 0.0 and s15 == 0.0):
+        allow_short = False
+        poi_notes.append("SHORT ditahan karena harga dekat area support/lower BB (rawan pantulan beli menyapu SL)")
+    if not touched_lines:
         allow_long = False
         allow_short = False
+        poi_notes.append(f"Belum menginjak/menyentuh garis EMA/BB/SR kunci (batas {line_touch_tol} pts)")
+    else:
+        poi_notes.append(f"Menyentuh/menginjak level kunci: {touched_lines[:3]}")
+
+    if near_upper_resistance and not (s5 == 0.0 and s15 == 0.0):
+        allow_long = False
+        poi_notes.append("LONG ditahan karena harga di pucuk/dekat resistance/upper BB (rawan koreksi menyapu SL)")
+
+    if not has_bull_rejection:
+        allow_long = False
+        poi_notes.append("Belum ada candle konfirmasi pantulan naik (bullish)")
+    if not has_bear_rejection:
+        allow_short = False
+        poi_notes.append("Belum ada candle konfirmasi penolakan turun (bearish)")
+
+    poi_valid = allow_long or allow_short
+    poi_note = " | ".join(poi_notes)
 
     res_levels = {
         "Swing High 5m": m["sh_5m"],
@@ -592,10 +636,8 @@ def evaluate_quant_gates(m, cfg):
     if short_obstacles:
         allow_short = False
 
-    # Hitung titik rekomendasi Limit Order yang presisi (tengah candle / EMA 9)
-    active_c = m["curr_candle"] if m["curr_candle"]["range"] >= m["prev_candle"]["range"] else m["prev_candle"]
-    suggested_limit_long = round(min(price - 0.05, max(active_c["mid"], m["ema9"])), 3)
-    suggested_limit_short = round(max(price + 0.05, min(active_c["mid"], m["ema9"])), 3)
+    suggested_limit_long = round(min(price - 0.04, max(c_curr["mid"], m["ema9"], m["ema21"])), 3)
+    suggested_limit_short = round(max(price + 0.04, min(c_curr["mid"], m["ema9"], m["ema21"])), 3)
 
     return {
         "vol_status": vol_status,
@@ -613,12 +655,6 @@ def evaluate_quant_gates(m, cfg):
     }
 
 def monitor_pending_limit_order(cfg, metrics):
-    """
-    Memantau Pending Limit Order:
-    - Jika harga menjauh 20-23 poin (0.21) sebelum menyentuh limit -> CANCEL otomatis (terlewat).
-    - Jika menyentuh titik limit -> Ubah menjadi ACTIVE TRADE dan pantau TP/SL/BEP.
-    - Jika lebih dari 3 candle (15 menit) tidak tersentuh -> CANCEL kedaluwarsa.
-    """
     pending = cfg.get("pending_order")
     if not pending:
         return cfg, "NO_PENDING", None
@@ -638,13 +674,11 @@ def monitor_pending_limit_order(cfg, metrics):
     if not relevant_candles:
         relevant_candles = [{"t": created_time, "h": curr_price, "l": curr_price, "c": curr_price}]
 
-    # Cek secara kronologis setiap candle sejak limit order dipasang
-    for idx, c in enumerate(relevant_candles):
+    for c in relevant_candles:
         bar_high = curr_price if c["t"] == created_time else c["h"]
         bar_low = curr_price if c["t"] == created_time else c["l"]
 
         if direction == "LONG":
-            # 1. Cek apakah harga sudah lari menjauh >= 0.21 poin (21 poin) ke atas tanpa jemput limit
             if (bar_high - limit_p) >= 0.21 and bar_low > limit_p:
                 cfg["pending_order"] = None
                 cfg["stats"]["cancelled_limits"] += 1
@@ -656,7 +690,6 @@ def monitor_pending_limit_order(cfg, metrics):
                 )
                 return cfg, "CANCELLED_MISSED", msg
 
-            # 2. Cek apakah harga turun menjemput titik Limit Order (Filled!)
             if c["t"] > created_time and bar_low <= limit_p:
                 cfg["pending_order"] = None
                 bep_trigger = round(limit_p + sl_dist, 3)
@@ -683,7 +716,6 @@ def monitor_pending_limit_order(cfg, metrics):
                 return cfg, "FILLED", msg
 
         elif direction == "SHORT":
-            # 1. Cek apakah harga sudah jatuh menjauh >= 0.21 poin (21 poin) ke bawah tanpa jemput limit
             if (limit_p - bar_low) >= 0.21 and bar_high < limit_p:
                 cfg["pending_order"] = None
                 cfg["stats"]["cancelled_limits"] += 1
@@ -695,7 +727,6 @@ def monitor_pending_limit_order(cfg, metrics):
                 )
                 return cfg, "CANCELLED_MISSED", msg
 
-            # 2. Cek apakah harga naik menjemput titik Limit Order (Filled!)
             if c["t"] > created_time and bar_high >= limit_p:
                 cfg["pending_order"] = None
                 bep_trigger = round(limit_p - sl_dist, 3)
@@ -721,7 +752,6 @@ def monitor_pending_limit_order(cfg, metrics):
                 )
                 return cfg, "FILLED", msg
 
-    # 3. Cek jika sudah lewat > 3 candle (15 menit) tidak tersentuh juga -> Kedaluwarsa
     if len(relevant_candles) > 4:
         cfg["pending_order"] = None
         cfg["stats"]["cancelled_limits"] += 1
@@ -912,17 +942,18 @@ def build_prompt(current_price, market_summary, gates, cfg):
 
     QUANTITATIVE GATES:
     - Volatility & Candle Size (Max 0.35): {gates['vol_status']} ({gates['vol_note']})
-    - Suggested Limit Order Levels (Mid-Candle / EMA9): LONG Limit=${gates['suggested_limit_long']} | SHORT Limit=${gates['suggested_limit_short']}
+    - Suggested Limit Order Levels: LONG Limit=${gates['suggested_limit_long']} | SHORT Limit=${gates['suggested_limit_short']}
     - Structure: {gates['struct_note']}
-    - POI: {gates['poi_note']}
+    - Pullback & Candle Confirmation: {gates['poi_note']}
     - Obstacles LONG: {gates['long_obstacles'] or 'Clear'} | SHORT: {gates['short_obstacles'] or 'Clear'}
     - Permissions: allow_long={gates['allow_long']}, allow_short={gates['allow_short']}
 
     STRATEGY: {cfg['strategy']}
 
-    EXECUTION ORDER TYPE RULES (MARKET vs LIMIT):
-    - If recent candle range is wide (0.24 to 0.35 pts), prefer "LIMIT" order near mid-candle / EMA 9 so SL ({sl_val} pts) is safely tucked behind the candle's wick!
-    - HOWEVER, if momentum is launching cleanly from a major Support/Resistance or EMA cluster with strong volume/CVD and low risk of pulling back > {sl_val} pts, you MAY choose "MARKET" order even on candle close.
+    PULLBACK, ANTI-EXTREME & ADAPTIVE INDICATOR RULES:
+    1. SHORT requires price to PULL UP (retest/bounce) into an EMA (9/10/20/21/30/50/200), Bollinger Band upper/mid, or resistance/swing level WITH a bearish rejection/momentum candle. NEVER SHORT at the bottom or near lower support where buy orders can sweep SL.
+    2. LONG requires price to PULL BACK (dip) into an EMA (9/10/20/21/30/50/200), Bollinger Band lower/mid, or support/swing level WITH a bullish rejection/momentum candle. NEVER LONG at the top or near upper resistance where pullbacks can sweep SL.
+    3. Adaptive indicators: In TRENDING markets, prioritize structure, EMA reaction/continuation, and CVD/volume (do not let SMI overbought/oversold block valid trend continuations). In SIDEWAYS markets, prioritize Bollinger Bands, swing highs/lows, and SMI.
 
     Output strictly valid compact JSON (no markdown fences, max 16 words per field):
     {{
@@ -933,10 +964,10 @@ def build_prompt(current_price, market_summary, gates, cfg):
       "audit_6_gates": {{
         "gate1_volatility_sl": "<Lulus/Gagal + singkat>",
         "gate2_mtf_structure": "<Lulus/Gagal + singkat>",
-        "gate3_entry_zone_poi": "<Lulus/Gagal + alasan Market/Limit & SL>",
+        "gate3_entry_zone_poi": "<Lulus/Gagal + pullback/EMA/candle & order type>",
         "gate4_tp_clearance": "<Lulus/Gagal + singkat>",
         "gate5_candlestick_vol": "<Lulus/Gagal + singkat>",
-        "gate6_smi_cvd": "<Lulus/Gagal + singkat>"
+        "gate6_smi_cvd": "<Lulus/Gagal + indikator adaptif>"
       }},
       "reasoning": "<Kesimpulan singkat Bahasa Indonesia>"
     }}
@@ -984,24 +1015,26 @@ def local_quant_fallback(m, gates, cfg):
     signal = "WAIT"
     order_type = "LIMIT" if gates["prefer_limit"] else "MARKET"
     entry_p = price
-    regime = "CHOPPY_EXTREME" if gates["vol_status"] != "OPTIMAL" else ("TRENDING" if m["struct_5m"] != 0 else "SIDEWAYS")
+    is_trend = m["struct_5m"] != 0 or m["struct_15m"] != 0
+    regime = "CHOPPY_EXTREME" if gates["vol_status"] != "OPTIMAL" else ("TRENDING" if is_trend else "SIDEWAYS")
     reason = f"{gates['vol_note']} {gates['struct_note']} {gates['poi_note']}"
 
     c_prev = m["prev_candle"]
     c_curr = m["curr_candle"]
-    strong_bull_candle = (c_prev["dir"] == "BULLISH" and c_prev["vol_ratio"] >= 1.0) or (c_curr["dir"] == "BULLISH" and c_curr["body_pct"] >= 55)
-    strong_bear_candle = (c_prev["dir"] == "BEARISH" and c_prev["vol_ratio"] >= 1.0) or (c_curr["dir"] == "BEARISH" and c_curr["body_pct"] >= 55)
+    bull_confirm = (c_prev["dir"] == "BULLISH" and c_prev["vol_ratio"] >= 0.9) or (c_curr["dir"] == "BULLISH" and c_curr["body_pct"] >= 45)
+    bear_confirm = (c_prev["dir"] == "BEARISH" and c_prev["vol_ratio"] >= 0.9) or (c_curr["dir"] == "BEARISH" and c_curr["body_pct"] >= 45)
 
+    # Adaptif: saat trending utamakan struktur, EMA (9/21/50) & CVD (tidak memblokir karena SMI jenuh)
     if gates["allow_long"] and m["struct_5m"] == 1.0 and m["struct_15m"] == 1.0:
-        if m["ema9"] > m["ema20"] > m["ema50"] and price > m["ema9"] and m["smi"] > m["smi_signal"] and m["cvd_15m"] > 0 and strong_bull_candle:
+        if price >= m["ema21"] * 0.998 and m["cvd_15m"] >= 0 and bull_confirm:
             signal = "LONG"
             entry_p = gates["suggested_limit_long"] if order_type == "LIMIT" else price
-            reason = f"Lulus 6 gerbang ({order_type}): Uptrend 5m & 15m selaras, pantulan EMA 9 (${m['ema9']}), candle bullish kuat, SMI & CVD positif."
+            reason = f"Lulus ({order_type}): Uptrend 5m & 15m, pullback/reaksi di area EMA & CVD positif, candle bullish terkonfirmasi."
     elif gates["allow_short"] and m["struct_5m"] == -1.0 and m["struct_15m"] == -1.0:
-        if m["ema9"] < m["ema20"] < m["ema50"] and price < m["ema9"] and m["smi"] < m["smi_signal"] and m["cvd_15m"] < 0 and strong_bear_candle:
+        if price <= m["ema21"] * 1.002 and m["cvd_15m"] <= 0 and bear_confirm:
             signal = "SHORT"
             entry_p = gates["suggested_limit_short"] if order_type == "LIMIT" else price
-            reason = f"Lulus 6 gerbang ({order_type}): Downtrend 5m & 15m selaras, penolakan EMA 9 (${m['ema9']}), candle bearish kuat, SMI & CVD negatif."
+            reason = f"Lulus ({order_type}): Downtrend 5m & 15m, pullback naik ke area EMA & CVD negatif, candle bearish terkonfirmasi."
 
     res = {
         "signal": signal,
@@ -1014,7 +1047,7 @@ def local_quant_fallback(m, gates, cfg):
             "gate3_entry_zone_poi": f"{gates['poi_note']} | Mode: {order_type}",
             "gate4_tp_clearance": f"Halangan LONG: {gates['long_obstacles'] or 'Bersih'} | SHORT: {gates['short_obstacles'] or 'Bersih'}",
             "gate5_candlestick_vol": f"Prev: {c_prev['pattern']} (Vol {c_prev['vol_ratio']}x) | Curr: {c_curr['pattern']}",
-            "gate6_smi_cvd": f"SMI 5m {m['smi']}/{m['smi_signal']}, CVD 15m ${m['cvd_15m']:+,.0f}"
+            "gate6_smi_cvd": f"CVD 15m ${m['cvd_15m']:+,.0f} | SMI {m['smi']}/{m['smi_signal']} (adaptif)"
         },
         "reasoning": reason
     }
@@ -1060,10 +1093,10 @@ def analyze_market_with_fallback(current_price, market_summary, metrics, gates, 
     sig = str(ai_result.get("signal", "WAIT")).upper()
     if sig == "LONG" and not gates["allow_long"]:
         ai_result["signal"] = "WAIT"
-        ai_result["reasoning"] = f"[Diblokir Saringan Ketat] {gates['vol_note']} {gates['struct_note']} {gates['poi_note']}"
+        ai_result["reasoning"] = f"[Diblokir Saringan Ketat] {gates['poi_note']} | {gates['vol_note']}"
     elif sig == "SHORT" and not gates["allow_short"]:
         ai_result["signal"] = "WAIT"
-        ai_result["reasoning"] = f"[Diblokir Saringan Ketat] {gates['vol_note']} {gates['struct_note']} {gates['poi_note']}"
+        ai_result["reasoning"] = f"[Diblokir Saringan Ketat] {gates['poi_note']} | {gates['vol_note']}"
 
     return ai_result, used_engine
 
@@ -1074,7 +1107,6 @@ if __name__ == "__main__":
     try:
         price, market_summary, metrics = fetch_market_data()
         
-        # 1. Jika ada PENDING LIMIT ORDER, pantau terlebih dahulu
         if config.get("pending_order"):
             config, limit_status, limit_msg = monitor_pending_limit_order(config, metrics)
             if limit_status in ["CANCELLED_MISSED", "CANCELLED_EXPIRED", "FILLED"]:
@@ -1084,7 +1116,6 @@ if __name__ == "__main__":
             else:
                 print("Mode Hening: Limit order masih menunggu jemputan harga.")
 
-        # 2. Jika ada POSISI AKTIF (baik dari Market maupun Limit yang baru saja Filled), pantau TP/SL/BEP
         elif config.get("active_trade"):
             config, trade_status, trade_msg = monitor_active_trade(config, metrics)
             if trade_status in ["CLOSED_TP", "CLOSED_SL", "CLOSED_BEP", "MOVED_BEP"]:
@@ -1094,12 +1125,11 @@ if __name__ == "__main__":
             else:
                 print("Mode Hening: Posisi aktif masih berjalan normal.")
                 
-        # 3. Jika tidak ada posisi maupun limit order, evaluasi setup baru
         else:
             gates = evaluate_quant_gates(metrics, config)
             
             if not gates["allow_long"] and not gates["allow_short"] and not is_manual_scan:
-                print(f"Hemat Kuota AI (Mode Hening): Saringan awal menolak peluang -> {gates['vol_note']} | {gates['struct_note']}")
+                print(f"Hemat Kuota AI (Mode Hening): Belum ada pullback/konfirmasi valid -> {gates['poi_note']}")
             else:
                 ai_data, used_model = analyze_market_with_fallback(price, market_summary, metrics, gates, config)
                 sig = str(ai_data.get("signal", "WAIT")).upper()
@@ -1115,7 +1145,6 @@ if __name__ == "__main__":
                     tp_dist = float(config["tp"])
                     sl_dist = float(config["sl"])
                     
-                    # Tentukan harga entry valid (Market vs Limit)
                     if order_type == "LIMIT":
                         raw_entry = float(ai_data.get("entry_price", 0))
                         if sig == "LONG":
@@ -1142,7 +1171,7 @@ if __name__ == "__main__":
                             "reason": reason
                         }
                         msg = (
-                            f"🎯 *SINYAL LIMIT ORDER (JEMPUT TENGAH CANDLE): {sig} LIMIT*\n"
+                            f"🎯 *SINYAL LIMIT ORDER (PULLBACK + KONFIRMASI): {sig} LIMIT*\n"
                             f"🤖 Engine: `{used_model}` | Rezim: `{regime}`\n"
                             f"⚙️ Eksekusi: `{status_trade}`\n\n"
                             f"• *Harga Market Sekarang:* `${price}`\n"
@@ -1153,10 +1182,10 @@ if __name__ == "__main__":
                             f"🔍 *Audit 6 Gerbang Strategi:*\n"
                             f"1️⃣ Volatilitas & SL: {audit.get('gate1_volatility_sl', '-')}\n"
                             f"2️⃣ Struktur 5m/15m/1H: {audit.get('gate2_mtf_structure', '-')}\n"
-                            f"3️⃣ Area Entry & SL: {audit.get('gate3_entry_zone_poi', '-')}\n"
+                            f"3️⃣ Area Entry & Pullback: {audit.get('gate3_entry_zone_poi', '-')}\n"
                             f"4️⃣ Jalur TP 0.60: {audit.get('gate4_tp_clearance', '-')}\n"
                             f"5️⃣ Candle & Volume: {audit.get('gate5_candlestick_vol', '-')}\n"
-                            f"6️⃣ SMI & Spot CVD: {audit.get('gate6_smi_cvd', '-')}\n\n"
+                            f"6️⃣ Indikator Adaptif: {audit.get('gate6_smi_cvd', '-')}\n\n"
                             f"💡 *Kesimpulan:* {reason}"
                         )
                         send_telegram(msg)
@@ -1185,10 +1214,10 @@ if __name__ == "__main__":
                             f"🔍 *Audit 6 Gerbang Strategi:*\n"
                             f"1️⃣ Volatilitas & SL: {audit.get('gate1_volatility_sl', '-')}\n"
                             f"2️⃣ Struktur 5m/15m/1H: {audit.get('gate2_mtf_structure', '-')}\n"
-                            f"3️⃣ Area Entry & SL: {audit.get('gate3_entry_zone_poi', '-')}\n"
+                            f"3️⃣ Area Entry & Pullback: {audit.get('gate3_entry_zone_poi', '-')}\n"
                             f"4️⃣ Jalur TP 0.60: {audit.get('gate4_tp_clearance', '-')}\n"
                             f"5️⃣ Candle & Volume: {audit.get('gate5_candlestick_vol', '-')}\n"
-                            f"6️⃣ SMI & Spot CVD: {audit.get('gate6_smi_cvd', '-')}\n\n"
+                            f"6️⃣ Indikator Adaptif: {audit.get('gate6_smi_cvd', '-')}\n\n"
                             f"💡 *Kesimpulan:* {reason}"
                         )
                         send_telegram(msg)
@@ -1201,10 +1230,10 @@ if __name__ == "__main__":
                         f"🔍 *Hasil Audit 6 Gerbang:*\n"
                         f"1️⃣ Volatilitas & SL: {audit.get('gate1_volatility_sl', '-')}\n"
                         f"2️⃣ Struktur 5m/15m/1H: {audit.get('gate2_mtf_structure', '-')}\n"
-                        f"3️⃣ Area Entry & SL: {audit.get('gate3_entry_zone_poi', '-')}\n"
+                        f"3️⃣ Area Entry & Pullback: {audit.get('gate3_entry_zone_poi', '-')}\n"
                         f"4️⃣ Jalur TP 0.60: {audit.get('gate4_tp_clearance', '-')}\n"
                         f"5️⃣ Candle & Volume: {audit.get('gate5_candlestick_vol', '-')}\n"
-                        f"6️⃣ SMI & Spot CVD: {audit.get('gate6_smi_cvd', '-')}\n\n"
+                        f"6️⃣ Indikator Adaptif: {audit.get('gate6_smi_cvd', '-')}\n\n"
                         f"💡 *Alasan Menunggu:* {reason}"
                     )
                     send_telegram(msg)
