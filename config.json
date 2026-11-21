@@ -3,7 +3,7 @@
   "tp": 0.6,
   "sl": 0.23,
   "strategy": "1. Anti-Pucuk & Anti-Dasar (Wajib Pullback + Candle Konfirmasi): SHORT hanya valid setelah harga naik dulu ke area garis EMA (9/10/20/21/30/50/200), Bollinger Band atas/tengah, atau resistance struktur lalu muncul candle konfirmasi penolakan turun; dilarang SHORT saat harga sudah di bawah/dekat support bawah yang rawan pantulan beli menyapu SL. LONG hanya valid setelah harga turun dulu menginjak garis EMA, Bollinger Band bawah/tengah, atau support struktur lalu muncul candle konfirmasi pantulan naik; dilarang LONG saat harga sudah di pucuk/dekat resistance atas. 2. Indikator Adaptif: Saat TRENDING, utamakan struktur pasar, reaksi/pijakan garis EMA, dan CVD/volume (SMI tidak dipakai sebagai penahan palsu saat tren kuat). Saat SIDEWAYS, utamakan batas Bollinger Bands, swing high/low, dan SMI. 3. Tetap terapkan filter volatilitas/ATR, dominasi struktur 5m/15m, dan jalur TP 0.60 yang bebas halangan S/R besar.",
-  "last_update_id": 698291193,
+  "last_update_id": 698291194,
   "pending_order": null,
   "active_trade": null,
   "stats": {
