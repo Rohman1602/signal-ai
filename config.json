@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 70.24,
     "tp_price": 70.84,
-    "sl_price": 70.01,
+    "sl_price": 70.24,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 70.47,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795388400000,
     "entry_time": "23/11 06:00 WIB",
     "reason": "Pullback sehat ke area EMA di tengah makro uptrend, memberikan R:R ideal."
