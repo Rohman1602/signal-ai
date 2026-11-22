@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 70.32,
     "tp_price": 70.92,
-    "sl_price": 70.09,
+    "sl_price": 70.32,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 70.55,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795364100000,
     "entry_time": "22/11 23:20 WIB",
     "reason": "Pullback sehat ke area cluster EMA pada 5m dengan ruang gerak longgar."
