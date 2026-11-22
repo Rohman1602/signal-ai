@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 70.27,
     "tp_price": 70.87,
-    "sl_price": 70.04,
+    "sl_price": 70.27,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 70.5,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795359600000,
     "entry_time": "22/11 22:05 WIB",
     "reason": "Pullback sehat ke kluster EMA pada struktur 5M uptrend memberikan peluang LONG berkualitas."
