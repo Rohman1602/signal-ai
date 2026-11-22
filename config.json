@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 70.74,
     "tp_price": 70.14,
-    "sl_price": 70.97,
+    "sl_price": 70.74,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 70.51,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795366500000,
     "entry_time": "23/11 00:00 WIB",
     "reason": "Harga di area upper BB dan jenuh beli, peluang koreksi ke EMA 20 sangat terbuka."
