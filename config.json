@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 72.1,
     "tp_price": 71.5,
-    "sl_price": 72.33,
+    "sl_price": 72.1,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 71.87,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795475100000,
     "entry_time": "24/11 06:05 WIB",
     "reason": "Sesuai izin sistem, tren 5m-15m downtrend dengan pullback ideal ke EMA."
