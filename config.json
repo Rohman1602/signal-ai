@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 70.65,
     "tp_price": 70.05,
-    "sl_price": 70.88,
+    "sl_price": 70.65,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 70.42,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795397100000,
     "entry_time": "23/11 08:25 WIB",
     "reason": "Setup SHORT valid memanfaatkan rejection di cluster EMA dan batas atas sideways."
