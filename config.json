@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 72.58,
     "tp_price": 71.98,
-    "sl_price": 72.81,
+    "sl_price": 72.58,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 72.35,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795440300000,
     "entry_time": "23/11 20:25 WIB",
     "reason": "Short di batas atas struktur sideways/downtrend pendek dengan R:R terukur."
