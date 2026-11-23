@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 72.37,
     "tp_price": 71.77,
-    "sl_price": 72.6,
+    "sl_price": 72.37,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 72.14,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795471200000,
     "entry_time": "24/11 05:00 WIB",
     "reason": "Struktur downtrend kuat didukung CVD negatif. Entry SHORT di 72.37 memanfaatkan pullback EMA."
