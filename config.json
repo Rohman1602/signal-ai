@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 73.53,
     "tp_price": 74.13,
-    "sl_price": 73.3,
+    "sl_price": 73.53,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 73.76,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795457700000,
     "entry_time": "24/11 01:15 WIB",
     "reason": "Pullback sehat ke area support EMA dan struktur makro 1H uptrend mendukung buy on dip."
