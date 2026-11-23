@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 72.95,
     "tp_price": 72.35,
-    "sl_price": 73.18,
+    "sl_price": 72.95,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 72.72,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795466700000,
     "entry_time": "24/11 03:45 WIB",
     "reason": "Struktur 15M bearish dan CVD negatif mendukung kelanjutan penurunan dari area EMA."
