@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 72.81,
     "tp_price": 72.21,
-    "sl_price": 73.04,
+    "sl_price": 72.81,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 72.58,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795434300000,
     "entry_time": "23/11 18:45 WIB",
     "reason": "SHORT terpilih karena harga di upper BB dekat swing high dengan penolakan doji."
