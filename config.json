@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 71.22,
     "tp_price": 71.82,
-    "sl_price": 70.99,
+    "sl_price": 71.22,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 71.45,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795406700000,
     "entry_time": "23/11 11:10 WIB",
     "reason": "Pullback sehat ke EMA pendek pada tren naik utama, R:R sangat menarik."
