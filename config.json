@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 73.3,
     "tp_price": 73.9,
-    "sl_price": 73.07,
+    "sl_price": 73.3,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 73.53,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795460100000,
     "entry_time": "24/11 01:55 WIB",
     "reason": "Memanfaatkan support 1H dan EMA200 5M untuk entry long dengan R:R ideal."
