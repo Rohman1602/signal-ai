@@ -10,10 +10,10 @@
     "order_type": "MARKET",
     "entry_price": 70.65,
     "tp_price": 71.25,
-    "sl_price": 70.42,
+    "sl_price": 70.65,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 70.88,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795390500000,
     "entry_time": "23/11 06:35 WIB",
     "reason": "Uptrend multi-timeframe kuat dengan pullback sehat ke area EMA dan CVD positif."
