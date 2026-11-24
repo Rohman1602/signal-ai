@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 70.75,
     "tp_price": 70.15,
-    "sl_price": 70.98,
+    "sl_price": 70.75,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 70.52,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795515000000,
     "entry_time": "24/11 17:10 WIB",
     "reason": "Tren multi-timeframe turun dan pullback valid di area EMA mendukung entry short."
