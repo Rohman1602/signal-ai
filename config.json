@@ -10,10 +10,10 @@
     "order_type": "MARKET",
     "entry_price": 69.29,
     "tp_price": 69.89,
-    "sl_price": 69.06,
+    "sl_price": 69.29,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 69.52,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795547100000,
     "entry_time": "25/11 02:08 WIB",
     "reason": "Setup LONG berkualitas (MARKET): area pullback/EMA terjaga & konfirmasi pantulan muncul."
