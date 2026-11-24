@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 69.56,
     "tp_price": 68.96,
-    "sl_price": 69.79,
+    "sl_price": 69.56,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 69.33,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795555800000,
     "entry_time": "25/11 04:35 WIB",
     "reason": "Harga di pucuk BB 5M dan mendekati resistance 15M, searah tren makro 1H."
