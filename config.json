@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 72.54,
     "tp_price": 71.94,
-    "sl_price": 72.77,
+    "sl_price": 72.54,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 72.31,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795483200000,
     "entry_time": "24/11 08:25 WIB",
     "reason": "Harga di area jenuh beli 5M, rejection di upper BB, peluang koreksi ke EMA."
