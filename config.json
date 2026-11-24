@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 69.46,
     "tp_price": 70.06,
-    "sl_price": 69.23,
+    "sl_price": 69.46,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 69.69,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795557600000,
     "entry_time": "25/11 05:00 WIB",
     "reason": "Pullback sehat ke area EMA pada tren 5M dengan konfirmasi penolakan bawah dan ruang TP bersih."
