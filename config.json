@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 70.9,
     "tp_price": 70.3,
-    "sl_price": 71.13,
+    "sl_price": 70.9,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 70.67,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795512600000,
     "entry_time": "24/11 16:30 WIB",
     "reason": "Struktur downtrend kuat, memanfaatkan pullback ke EMA untuk entry short dengan probabilitas tinggi."
