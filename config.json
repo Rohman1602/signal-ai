@@ -5,25 +5,13 @@
   "strategy": "1. Kualitas & R:R Terukur: Utamakan setup dengan peluang akurasi lebih baik dan jalur pergerakan yang cukup lega menuju target. 2. Anti-Pucuk & Anti-Dasar + Pullback EMA: LONG hanya valid saat pullback/retest mendekati area EMA atau bagian bawah-tengah pergerakan dengan konfirmasi pantulan; dilarang LONG di pucuk/dekat upper BB atau setelah lari terlalu jauh. SHORT hanya valid saat pullback naik mendekati area EMA atau bagian atas-tengah pergerakan dengan konfirmasi penolakan; dilarang SHORT di dasar/dekat lower BB. 3. Fleksibel & Tidak Terlalu Sensitif: Jangan memblokir setup hanya karena satu indikator minor atau transisi singkat bila struktur, reaksi EMA, dan momentum cukup mendukung. 4. Antisipasi Strategi: Selalu sertakan rencana antisipasi (konfirmasi lanjutan, batas batal jika tembus level, dan pengelolaan 1:1 BEP).",
   "last_update_id": 0,
   "pending_order": null,
-  "active_trade": {
-    "direction": "SHORT",
-    "order_type": "MARKET",
-    "entry_price": 70.53,
-    "tp_price": 69.93,
-    "sl_price": 70.76,
-    "initial_sl_dist": 0.23,
-    "bep_trigger_price": 70.3,
-    "bep_moved": false,
-    "entry_open_time": 1795522800000,
-    "entry_time": "24/11 19:24 WIB",
-    "reason": "Setup SHORT berkualitas (MARKET): area pullback naik/EMA terjaga & konfirmasi penolakan muncul."
-  },
+  "active_trade": null,
   "stats": {
-    "total_closed": 53,
+    "total_closed": 54,
     "tp_hit": 0,
-    "sl_hit": 27,
+    "sl_hit": 28,
     "bep_hit": 26,
     "cancelled_limits": 32,
-    "net_points": -6.21
+    "net_points": -6.44
   }
 }
