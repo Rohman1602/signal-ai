@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 67.85,
     "tp_price": 68.45,
-    "sl_price": 67.62,
+    "sl_price": 67.85,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 68.08,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795593600000,
     "entry_time": "25/11 15:00 WIB",
     "reason": "Harga di area support kuat dengan rejection, risiko rendah untuk pantulan teknikal ke EMA."
