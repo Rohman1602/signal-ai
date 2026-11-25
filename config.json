@@ -1,29 +1,18 @@
 {
+  "bot_paused": false,
   "live_trading": false,
-  "tp": 0.6,
+  "tp": 0.60,
   "sl": 0.23,
-  "strategy": "1. Kualitas & R:R Terukur: Utamakan setup dengan peluang akurasi lebih baik dan jalur pergerakan yang cukup lega menuju target. 2. Anti-Pucuk & Anti-Dasar + Pullback EMA: LONG hanya valid saat pullback/retest mendekati area EMA atau bagian bawah-tengah pergerakan dengan konfirmasi pantulan; dilarang LONG di pucuk/dekat upper BB atau setelah lari terlalu jauh. SHORT hanya valid saat pullback naik mendekati area EMA atau bagian atas-tengah pergerakan dengan konfirmasi penolakan; dilarang SHORT di dasar/dekat lower BB. 3. Fleksibel & Tidak Terlalu Sensitif: Jangan memblokir setup hanya karena satu indikator minor atau transisi singkat bila struktur, reaksi EMA, dan momentum cukup mendukung. 4. Antisipasi Strategi: Selalu sertakan rencana antisipasi (konfirmasi lanjutan, batas batal jika tembus level, dan pengelolaan 1:1 BEP).",
+  "strategy": "1. Deteksi Rezim Pasti (ADX 14 + Chop EMA 200): Pastikan pasar TRENDING (ADX >= 22 dan struktur jelas) atau SIDEWAYS (ADX < 22 atau harga bolak-balik menembus EMA 200). 2. Mode TRENDING: Wajib ikuti struktur (HH/HL untuk LONG, LH/LL untuk SHORT) dan tunggu pantulan presisi di EMA 99 (5m/15m) atau klaster EMA 20/21/50. 3. Mode SIDEWAYS: Hentikan EMA sebagai acuan utama; gunakan peta Support/Resistance 24 jam + Stochastic Momentum Index (SMI jenuh jual <= -35 untuk LONG, jenuh beli >= +35 untuk SHORT) + candle konfirmasi. 4. Anti-Pisau Jatuh: Dilarang keras LONG saat candle masih merah/turun tanpa konfirmasi bullish; dilarang SHORT saat candle masih hijau/naik tanpa konfirmasi bearish.",
   "last_update_id": 0,
   "pending_order": null,
-  "active_trade": {
-    "direction": "SHORT",
-    "order_type": "LIMIT",
-    "entry_price": 67.77,
-    "tp_price": 67.17,
-    "sl_price": 68.0,
-    "initial_sl_dist": 0.23,
-    "bep_trigger_price": 67.54,
-    "bep_moved": false,
-    "entry_open_time": 1795601100000,
-    "entry_time": "25/11 17:05 WIB",
-    "reason": "Downtrend multi-timeframe kuat, entry limit di area EMA dengan izin SHORT aktif."
-  },
+  "active_trade": null,
   "stats": {
-    "total_closed": 81,
-    "tp_hit": 1,
-    "sl_hit": 45,
-    "bep_hit": 35,
-    "cancelled_limits": 49,
-    "net_points": -9.75
+    "total_closed": 0,
+    "tp_hit": 0,
+    "sl_hit": 0,
+    "bep_hit": 0,
+    "cancelled_limits": 0,
+    "net_points": 0.0
   }
 }
