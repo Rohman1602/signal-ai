@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 69.39,
     "tp_price": 68.79,
-    "sl_price": 69.62,
+    "sl_price": 69.39,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 69.16,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795578000000,
     "entry_time": "25/11 10:45 WIB",
     "reason": "Mengikuti tren makro 15M/1H DOWNTREND dengan entry limit di area pullback optimal."
