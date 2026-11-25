@@ -10,10 +10,10 @@
     "order_type": "LIMIT",
     "entry_price": 68.1,
     "tp_price": 67.5,
-    "sl_price": 68.33,
+    "sl_price": 68.1,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 67.87,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795596300000,
     "entry_time": "25/11 15:50 WIB",
     "reason": "Struktur downtrend kuat, entry di area EMA untuk melanjutkan tren turun sesuai izin."
