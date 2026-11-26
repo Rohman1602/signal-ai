@@ -1,45 +1,42 @@
-name: Argon 5m Bot
+name: Argon Pro Sniper Bot
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
-concurrency:
-  group: argon-bot-runner
-  cancel-in-progress: false
-
 jobs:
-  trading-bot:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
-      - name: Ambil Kode
+      - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Jalankan AI Agent
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install requests
+
+      - name: Run Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
-          BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
           BACKUP_AI_API_KEY: ${{ secrets.BACKUP_AI_API_KEY }}
           BACKUP_AI_URL: ${{ secrets.BACKUP_AI_URL }}
           BACKUP_AI_MODEL: ${{ secrets.BACKUP_AI_MODEL }}
-        run: |
-          python3 -c "import requests" 2>/dev/null || pip install --break-system-packages -q requests
-          python3 main.py
+        run: python main.py
 
-      - name: Simpan Memori & Statistik
+      - name: Save Bot Memory
         run: |
-          git config --local user.email "bot@argon.ai"
-          git config --local user.name "Argon Remote"
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
           git add config.json
-          if ! git diff --staged --quiet; then
-            git commit -m "Update state"
-            git pull --rebase origin main || true
-            git push
-          fi
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update state & stats" && git push)
