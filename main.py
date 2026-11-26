@@ -21,8 +21,10 @@ BACKUP_AI_MODEL = os.environ.get("BACKUP_AI_MODEL", "llama-3.3-70b-versatile")
 CONFIG_FILE = "config.json"
 WIB = timezone(timedelta(hours=7))
 
+
 def now_wib_str():
     return datetime.now(WIB).strftime("%d/%m %H:%M WIB")
+
 
 def load_config():
     default_cfg = {
@@ -54,7 +56,14 @@ def load_config():
                 loaded = json.load(f)
                 default_cfg.update(loaded)
                 if "stats" not in default_cfg or not isinstance(default_cfg["stats"], dict):
-                    default_cfg["stats"] = {"total_closed": 0, "tp_hit": 0, "sl_hit": 0, "bep_hit": 0, "cancelled_limits": 0, "net_points": 0.0}
+                    default_cfg["stats"] = {
+                        "total_closed": 0,
+                        "tp_hit": 0,
+                        "sl_hit": 0,
+                        "bep_hit": 0,
+                        "cancelled_limits": 0,
+                        "net_points": 0.0
+                    }
                 default_cfg["stats"].setdefault("cancelled_limits", 0)
                 default_cfg.setdefault("pending_order", None)
                 default_cfg.setdefault("bot_paused", False)
@@ -62,9 +71,11 @@ def load_config():
             pass
     return default_cfg
 
+
 def save_config(cfg):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
+
 
 def register_bot_commands():
     if not TELEGRAM_BOT_TOKEN:
@@ -84,6 +95,7 @@ def register_bot_commands():
     except Exception:
         pass
 
+
 def send_telegram(text, reply_markup=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
@@ -101,6 +113,7 @@ def send_telegram(text, reply_markup=None):
     except Exception as e:
         print(f"Gagal kirim Telegram: {e}")
 
+
 def format_stats_text(cfg):
     s = cfg.get("stats", {})
     total = s.get("total_closed", 0)
@@ -111,7 +124,7 @@ def format_stats_text(cfg):
     net = round(s.get("net_points", 0.0), 3)
     win_rate = round((tp_hit / total) * 100, 1) if total > 0 else 0.0
     non_loss_rate = round(((tp_hit + bep_hit) / total) * 100, 1) if total > 0 else 0.0
-    
+
     return (
         f"📊 *EVALUASI KINERJA SINYAL*\n"
         f"• Total Trade Selesai: `{total} trade`\n"
@@ -123,14 +136,15 @@ def format_stats_text(cfg):
         f"• Akumulasi Poin Bersih: `{net:+} poin`"
     )
 
+
 def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON PRO*"):
     is_paused = bool(cfg.get("bot_paused", False))
     status_bot = "⏸️ PAUSED (Sinyal Dijeda)" if is_paused else "▶️ AKTIF (Memantau Pasar)"
     pause_btn = "▶️ Lanjutkan Sinyal (Resume)" if is_paused else "⏸️ Jeda Sinyal (Pause)"
-    
+
     status_trade = "🟢 ON (LIVE)" if cfg["live_trading"] else "🔴 OFF (Signal Only)"
     toggle_label = "🔴 Matikan Auto-Trading" if cfg["live_trading"] else "🟢 Aktifkan Auto-Trading"
-    
+
     active = cfg.get("active_trade")
     pending = cfg.get("pending_order")
     if active:
@@ -145,7 +159,7 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON PRO*"):
             f"   TP: `${pending['tp_price']}` | SL: `${pending['sl_price']}`"
         )
     else:
-        pos_info = f"📌 *STATUS POSISI:* `Kosong (Ketik pertanyaan apa saja untuk tanya AI)`"
+        pos_info = "📌 *STATUS POSISI:* `Kosong (Ketik pertanyaan apa saja untuk tanya AI)`"
 
     text = (
         f"{header}\n\n"
@@ -155,7 +169,7 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON PRO*"):
         f"{pos_info}\n\n"
         f"{format_stats_text(cfg)}"
     )
-    
+
     keyboard = {
         "inline_keyboard": [
             [{"text": pause_btn, "callback_data": "toggle_pause"}],
@@ -172,10 +186,11 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON PRO*"):
     }
     send_telegram(text, reply_markup=keyboard)
 
+
 def process_telegram_commands(cfg):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     params = {"offset": cfg.get("last_update_id", 0) + 1, "timeout": 5}
-    
+
     try:
         res = requests.get(url, params=params, timeout=15).json()
     except Exception as e:
@@ -191,12 +206,12 @@ def process_telegram_commands(cfg):
 
     for update in res.get("result", []):
         cfg["last_update_id"] = update["update_id"]
-        
+
         if "callback_query" in update:
             cb = update["callback_query"]
             if str(cb["from"]["id"]) != TELEGRAM_CHAT_ID:
                 continue
-                
+
             try:
                 requests.post(
                     f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery",
@@ -204,7 +219,7 @@ def process_telegram_commands(cfg):
                 )
             except Exception:
                 pass
-            
+
             action = cb.get("data", "")
             if action == "toggle_pause":
                 cfg["bot_paused"] = not bool(cfg.get("bot_paused", False))
@@ -220,11 +235,10 @@ def process_telegram_commands(cfg):
             elif action == "ask_help":
                 help_text = (
                     "💬 *ASISTEN TANYA JAWAB AI AKTIF*\n\n"
-                    "Anda bisa langsung mengetik pertanyaan bebas di chat ini, misalnya:\n"
+                    "Ketik pertanyaan bebas di chat ini, misalnya:\n"
                     "• _\"Strategi apa yang sekarang dijalankan bot?\"_\n"
                     "• _\"Area harga berapa yang sedang ditunggu untuk entry?\"_\n"
-                    "• _\"Kenapa bot belum masuk posisi saat ini?\"_\n\n"
-                    "Bot akan menganalisis kondisi pasar live + konfigurasi strategi lalu menjawabnya pada siklus pengecekan berikutnya."
+                    "• _\"Kenapa bot belum masuk posisi saat ini?\"_"
                 )
                 send_telegram(help_text)
             elif action == "scan_now":
@@ -234,10 +248,10 @@ def process_telegram_commands(cfg):
             msg = update["message"]
             if str(msg["chat"]["id"]) != TELEGRAM_CHAT_ID:
                 continue
-                
+
             text = msg["text"].strip()
             lower_text = text.lower()
-            
+
             if lower_text in ["/start", "/menu", "menu"]:
                 register_bot_commands()
                 menu_requested = True
@@ -256,7 +270,14 @@ def process_telegram_commands(cfg):
                 cfg["pending_order"] = None
                 send_telegram("🗑️ Posisi aktif & pending limit order dihapus dari memori.")
             elif lower_text == "/reset_stats":
-                cfg["stats"] = {"total_closed": 0, "tp_hit": 0, "sl_hit": 0, "bep_hit": 0, "cancelled_limits": 0, "net_points": 0.0}
+                cfg["stats"] = {
+                    "total_closed": 0,
+                    "tp_hit": 0,
+                    "sl_hit": 0,
+                    "bep_hit": 0,
+                    "cancelled_limits": 0,
+                    "net_points": 0.0
+                }
                 send_telegram("🔄 Statistik evaluasi berhasil direset ke 0.")
             elif lower_text.startswith("/tp "):
                 try:
@@ -279,9 +300,10 @@ def process_telegram_commands(cfg):
                     send_telegram(f"✅ *Strategi AI Diperbarui:*\n_{new_strat}_")
             elif lower_text.startswith("/tanya"):
                 q_body = text[6:].strip()
-                user_questions.append(q_body if q_body else "Jelaskan strategi yang sedang dijalankan bot saat ini dan rencana eksekusi yang sedang ditunggu.")
+                user_questions.append(
+                    q_body if q_body else "Jelaskan strategi yang sedang dijalankan bot saat ini dan rencana eksekusi yang sedang ditunggu."
+                )
             elif not text.startswith("/"):
-                # Semua pesan teks non-perintah dianggap pertanyaan langsung ke AI bot
                 user_questions.append(text)
 
     if menu_requested:
@@ -290,12 +312,14 @@ def process_telegram_commands(cfg):
     combined_question = "\n".join(user_questions).strip() if user_questions else None
     return cfg, manual_scan_requested, combined_question
 
+
 def calc_ema_series(values, period):
     k = 2 / (period + 1)
     ema_list = [values[0]]
     for v in values[1:]:
         ema_list.append(v * k + ema_list[-1] * (1 - k))
     return ema_list
+
 
 def calc_atr(highs, lows, closes, period=14):
     trs = []
@@ -305,29 +329,30 @@ def calc_atr(highs, lows, closes, period=14):
         else:
             tr = max(
                 highs[i] - lows[i],
-                abs(highs[i] - closes[i-1]),
-                abs(lows[i] - closes[i-1])
+                abs(highs[i] - closes[i - 1]),
+                abs(lows[i] - closes[i - 1])
             )
             trs.append(tr)
     atr_series = calc_ema_series(trs, period)
     return round(atr_series[-1], 4)
+
 
 def calc_adx(highs, lows, closes, period=14):
     if len(closes) < period + 2:
         return 20.0
     plus_dm, minus_dm, tr_list = [0.0], [0.0], [highs[0] - lows[0]]
     for i in range(1, len(closes)):
-        up_move = highs[i] - highs[i-1]
-        down_move = lows[i-1] - lows[i]
+        up_move = highs[i] - highs[i - 1]
+        down_move = lows[i - 1] - lows[i]
         plus_dm.append(up_move if (up_move > down_move and up_move > 0) else 0.0)
         minus_dm.append(down_move if (down_move > up_move and down_move > 0) else 0.0)
-        tr = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
+        tr = max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
         tr_list.append(tr)
-        
+
     tr_s = calc_ema_series(tr_list, period)
     pdm_s = calc_ema_series(plus_dm, period)
     mdm_s = calc_ema_series(minus_dm, period)
-    
+
     dx_list = []
     for tr_v, p_v, m_v in zip(tr_s, pdm_s, mdm_s):
         if tr_v == 0:
@@ -337,26 +362,27 @@ def calc_adx(highs, lows, closes, period=14):
         m_di = (m_v / tr_v) * 100.0
         denom = p_di + m_di
         dx_list.append((abs(p_di - m_di) / denom) * 100.0 if denom > 0 else 0.0)
-        
+
     adx_series = calc_ema_series(dx_list, period)
     return round(adx_series[-1], 1)
+
 
 def calc_smi_series(highs, lows, closes, length=10, smooth1=3, smooth2=3):
     rel_diff = []
     hl_range = []
     for i in range(len(closes)):
         start = max(0, i - length + 1)
-        hh = max(highs[start:i+1])
-        ll = min(lows[start:i+1])
+        hh = max(highs[start:i + 1])
+        ll = min(lows[start:i + 1])
         mid = (hh + ll) / 2.0
         rel_diff.append(closes[i] - mid)
         hl_range.append(hh - ll)
-    
+
     d1 = calc_ema_series(rel_diff, smooth1)
     d2 = calc_ema_series(d1, smooth2)
     r1 = calc_ema_series(hl_range, smooth1)
     r2 = calc_ema_series(r1, smooth2)
-    
+
     smi_vals = []
     for num, den in zip(d2, r2):
         if den != 0:
@@ -366,14 +392,15 @@ def calc_smi_series(highs, lows, closes, length=10, smooth1=3, smooth2=3):
     smi_sig = calc_ema_series(smi_vals, smooth2)
     return round(smi_vals[-1], 2), round(smi_sig[-1], 2), round(smi_vals[-2], 2)
 
+
 def detect_swing_levels(highs, lows, closes, lookback=36):
     sub_h = highs[-lookback:]
     sub_l = lows[-lookback:]
     third = len(sub_h) // 3
-    
-    h1, h2, h3 = max(sub_h[:third]), max(sub_h[third:2*third]), max(sub_h[2*third:])
-    l1, l2, l3 = min(sub_l[:third]), min(sub_l[third:2*third]), min(sub_l[2*third:])
-    
+
+    h1, h2, h3 = max(sub_h[:third]), max(sub_h[third:2 * third]), max(sub_h[2 * third:])
+    l1, l2, l3 = min(sub_l[:third]), min(sub_l[third:2 * third]), min(sub_l[2 * third:])
+
     if h3 > h2 and l3 > l2 and closes[-1] > l3:
         return 1.0, "UPTREND (HH/HL)", round(h3, 3), round(l3, 3)
     elif h3 < h2 and l3 < l2 and closes[-1] < h3:
@@ -385,19 +412,20 @@ def detect_swing_levels(highs, lows, closes, lookback=36):
     else:
         return 0.0, "RANGE / SIDEWAYS", round(max(h2, h3), 3), round(min(l2, l3), 3)
 
+
 def map_24h_key_zones(highs_5m, lows_5m, closes_5m):
     day_high = round(max(highs_5m), 3)
     day_low = round(min(lows_5m), 3)
     day_mid = round((day_high + day_low) / 2.0, 3)
-    
+
     pivot_highs = []
     pivot_lows = []
     for i in range(4, len(highs_5m) - 4):
-        if highs_5m[i] == max(highs_5m[i-4:i+5]):
+        if highs_5m[i] == max(highs_5m[i - 4:i + 5]):
             pivot_highs.append(highs_5m[i])
-        if lows_5m[i] == min(lows_5m[i-4:i+5]):
+        if lows_5m[i] == min(lows_5m[i - 4:i + 5]):
             pivot_lows.append(lows_5m[i])
-            
+
     def cluster_zones(levels):
         if not levels:
             return []
@@ -409,30 +437,28 @@ def map_24h_key_zones(highs_5m, lows_5m, closes_5m):
             else:
                 clusters.append([lv])
         ranked = sorted(clusters, key=lambda c: len(c), reverse=True)
-        return [(round(sum(c)/len(c), 3), len(c)) for c in ranked[:4]]
+        return [(round(sum(c) / len(c), 3), len(c)) for c in ranked[:4]]
 
-    major_res_zones = cluster_zones(pivot_highs)
-    major_sup_zones = cluster_zones(pivot_lows)
-    
     return {
         "day_high": day_high,
         "day_low": day_low,
         "day_mid": day_mid,
-        "major_res_zones": major_res_zones,
-        "major_sup_zones": major_sup_zones
+        "major_res_zones": cluster_zones(pivot_highs),
+        "major_sup_zones": cluster_zones(pivot_lows)
     }
+
 
 def analyze_candle_anatomy(o, h, l, c, v, avg_v):
     total_range = max(h - l, 0.001)
     body = abs(c - o)
     upper_wick = h - max(o, c)
     lower_wick = min(o, c) - l
-    
+
     body_pct = round((body / total_range) * 100, 1)
     upper_wick_pct = round((upper_wick / total_range) * 100, 1)
     lower_wick_pct = round((lower_wick / total_range) * 100, 1)
     vol_ratio = round(v / avg_v, 2) if avg_v > 0 else 1.0
-    
+
     direction = "BULLISH" if c > o else ("BEARISH" if c < o else "DOJI")
     pattern = "Normal"
     if body_pct <= 22:
@@ -445,7 +471,7 @@ def analyze_candle_anatomy(o, h, l, c, v, avg_v):
         pattern = "Strong Bullish Confirmation"
     elif body_pct >= 55 and direction == "BEARISH":
         pattern = "Strong Bearish Confirmation"
-        
+
     return {
         "dir": direction,
         "open": round(o, 3),
@@ -461,15 +487,16 @@ def analyze_candle_anatomy(o, h, l, c, v, avg_v):
         "pattern": pattern
     }
 
+
 def fetch_market_data():
-    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Pro/5.1'}
-    
+    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Pro/5.2'}
+
     url_5m = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=5m&limit=288"
     res_5m = requests.get(url_5m, headers=headers, timeout=15)
     if res_5m.status_code != 200:
         raise Exception(f"Gagal tarik data 5m Binance: HTTP {res_5m.status_code}")
     k5 = res_5m.json()
-    
+
     open_times = [int(k[0]) for k in k5]
     opens = [float(k[1]) for k in k5]
     highs = [float(k[2]) for k in k5]
@@ -478,10 +505,10 @@ def fetch_market_data():
     vols = [float(k[5]) for k in k5]
     quote_vols = [float(k[7]) for k in k5]
     taker_buy_quotes = [float(k[10]) for k in k5]
-    
+
     current_price = closes[-1]
     latest_candle_time = open_times[-1]
-    
+
     ema9 = round(calc_ema_series(closes, 9)[-1], 3)
     ema20 = round(calc_ema_series(closes, 20)[-1], 3)
     ema21 = round(calc_ema_series(closes, 21)[-1], 3)
@@ -490,17 +517,17 @@ def fetch_market_data():
     ema99 = round(ema99_series[-1], 3)
     ema200_series = calc_ema_series(closes, 200)
     ema200 = round(ema200_series[-1], 3)
-    
+
     ema200_crosses = 0
     for i in range(-36, -1):
         prev_above = closes[i] > ema200_series[i]
-        curr_above = closes[i+1] > ema200_series[i+1]
+        curr_above = closes[i + 1] > ema200_series[i + 1]
         if prev_above != curr_above:
             ema200_crosses += 1
-            
+
     atr_5m = calc_atr(highs, lows, closes, 14)
     adx_5m = calc_adx(highs, lows, closes, 14)
-    
+
     win20 = closes[-20:]
     bb_mid_val = sum(win20) / 20.0
     std_dev = (sum((x - bb_mid_val) ** 2 for x in win20) / 20.0) ** 0.5
@@ -508,21 +535,21 @@ def fetch_market_data():
     bb_lower = round(bb_mid_val - 2 * std_dev, 3)
     bb_mid = round(bb_mid_val, 3)
     bb_width_pct = round(((bb_upper - bb_lower) / current_price) * 100, 3)
-    
+
     smi_5m, smi_sig_5m, smi_5m_prev = calc_smi_series(highs, lows, closes, 10, 3, 3)
     struct_5m, struct_5m_label, sh_5m, sl_5m = detect_swing_levels(highs, lows, closes, 36)
     day_map = map_24h_key_zones(highs, lows, closes)
-    
+
     deltas_usdt = [2 * tbq - qv for tbq, qv in zip(taker_buy_quotes, quote_vols)]
     cvd_5m = round(deltas_usdt[-1], 0)
     cvd_15m = round(sum(deltas_usdt[-3:]), 0)
     cvd_1h = round(sum(deltas_usdt[-12:]), 0)
-    
+
     avg_vol_20 = sum(vols[-21:-1]) / 20.0
     prev2_candle_anatomy = analyze_candle_anatomy(opens[-3], highs[-3], lows[-3], closes[-3], vols[-3], avg_vol_20)
     prev_candle_anatomy = analyze_candle_anatomy(opens[-2], highs[-2], lows[-2], closes[-2], vols[-2], avg_vol_20)
     curr_candle_anatomy = analyze_candle_anatomy(opens[-1], highs[-1], lows[-1], closes[-1], vols[-1], avg_vol_20)
-    
+
     struct_15m, struct_15m_label, sh_15m, sl_15m = 0.0, "TIDAK TERSEDIA", sh_5m, sl_5m
     ema20_15m, ema50_15m, ema99_15m, ema200_15m = ema20, ema50, ema99, ema200
     smi_15m, smi_sig_15m, smi_15m_prev = smi_5m, smi_sig_5m, smi_5m_prev
@@ -562,7 +589,7 @@ def fetch_market_data():
         {"o": round(opens[i], 2), "h": round(highs[i], 2), "l": round(lows[i], 2), "c": round(closes[i], 2), "cvd": round(deltas_usdt[i], 0)}
         for i in range(-8, 0)
     ]
-    
+
     candle_history = [
         {"t": open_times[i], "h": highs[i], "l": lows[i], "c": closes[i]}
         for i in range(-40, 0)
@@ -588,7 +615,7 @@ def fetch_market_data():
         "prev_candle": prev_candle_anatomy,
         "curr_candle": curr_candle_anatomy
     }
-    
+
     summary = (
         f"Asset: SOL/USDT | Current Price: ${current_price}\n"
         f"Regime Diagnostics -> ADX(14) 5m: {adx_5m} | ADX(14) 15m: {adx_15m} | EMA200 Chop Crosses (3h): {ema200_crosses}x | 5M ATR: {atr_5m}\n"
@@ -609,6 +636,7 @@ def fetch_market_data():
     )
     return current_price, summary, metrics
 
+
 def evaluate_professional_setup(m, cfg):
     price = m["price"]
     tp_dist = float(cfg["tp"])
@@ -617,7 +645,7 @@ def evaluate_professional_setup(m, cfg):
     adx_5m = m["adx_5m"]
     adx_15m = m["adx_15m"]
     crosses = m["ema200_crosses_3h"]
-    
+
     c_prev = m["prev_candle"]
     c_curr = m["curr_candle"]
 
@@ -668,7 +696,7 @@ def evaluate_professional_setup(m, cfg):
         strategy_mode = "SIDEWAYS_SR_24H_SMI"
         near_major_sup = any(abs(min(price, c_prev["low"], c_curr["low"]) - sup) <= zone_tol for sup in sup_levels) or (c_prev["low"] <= m["bb_lower"] * 1.001)
         near_major_res = any(abs(max(price, c_prev["high"], c_curr["high"]) - res) <= zone_tol for res in res_levels) or (c_prev["high"] >= m["bb_upper"] * 0.999)
-        
+
         smi_bull_turn = (m["smi"] <= -25 or m["smi_15m"] <= -25) and (m["smi"] > m["smi_prev"] or m["smi"] > m["smi_signal"])
         smi_bear_turn = (m["smi"] >= 25 or m["smi_15m"] >= 25) and (m["smi"] < m["smi_prev"] or m["smi"] < m["smi_signal"])
 
@@ -688,7 +716,7 @@ def evaluate_professional_setup(m, cfg):
         strategy_mode = "TREND_STRUCTURE_EMA99"
         ema99_levels = [m["ema99"], m["ema99_15m"]]
         trend_emas = [m["ema99"], m["ema99_15m"], m["ema20"], m["ema21"], m["ema50"]]
-        
+
         touched_ema99 = any(
             min(abs(price - e99), abs(c_prev["low"] - e99), abs(c_prev["high"] - e99), abs(c_curr["low"] - e99), abs(c_curr["high"] - e99)) <= zone_tol
             for e99 in ema99_levels
@@ -741,6 +769,7 @@ def evaluate_professional_setup(m, cfg):
         "suggested_limit_long": suggested_limit_long,
         "suggested_limit_short": suggested_limit_short
     }
+
 
 def monitor_pending_limit_order(cfg, metrics):
     pending = cfg.get("pending_order")
@@ -842,6 +871,7 @@ def monitor_pending_limit_order(cfg, metrics):
         f"• TP: `${tp_p}` | SL: `${sl_p}`"
     )
 
+
 def monitor_active_trade(cfg, metrics):
     trade = cfg.get("active_trade")
     if not trade:
@@ -854,7 +884,7 @@ def monitor_active_trade(cfg, metrics):
     bep_trigger = float(trade["bep_trigger_price"])
     bep_moved = bool(trade.get("bep_moved", False))
     entry_open_time = int(trade.get("entry_open_time", 0))
-    
+
     curr_price = metrics["price"]
     tp_dist = round(abs(tp_price - entry), 3)
     sl_dist = round(float(trade.get("initial_sl_dist", cfg["sl"])), 3)
@@ -947,28 +977,46 @@ def monitor_active_trade(cfg, metrics):
     )
     return cfg, "STILL_RUNNING", status_msg
 
+
 def extract_json_safely(raw_text):
     clean = raw_text.replace("```json", "").replace("```", "").strip()
     start = clean.find("{")
     end = clean.rfind("}")
     if start != -1 and end != -1 and end > start:
-        clean = clean[start:end+1]
+        clean = clean[start:end + 1]
     return json.loads(clean)
 
-def call_gemini(model_name, prompt, api_key, temp=0.1, max_tokens=950):
+
+def call_gemini(model_name, prompt, api_key, temp=0.1, max_tokens=2048):
     clean_name = model_name.replace("models/", "")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_name}:generateContent?key={api_key}"
     headers = {'Content-Type': 'application/json'}
+
+    gen_config = {
+        "temperature": temp,
+        "maxOutputTokens": max_tokens
+    }
+    if "gemini" in clean_name.lower():
+        gen_config["thinkingConfig"] = {"thinkingBudget": 0}
+
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": temp, "maxOutputTokens": max_tokens}
+        "generationConfig": gen_config
     }
     response = requests.post(url, headers=headers, json=payload, timeout=45)
     data = response.json()
     if response.status_code != 200:
         error_msg = data.get('error', {}).get('message', str(data))
         raise Exception(f"[{clean_name}] HTTP {response.status_code}: {error_msg}")
-    return data['candidates'][0]['content']['parts'][0]['text']
+
+    parts = data.get('candidates', [{}])[0].get('content', {}).get('parts', [])
+    text_chunks = [p.get('text', '') for p in parts if 'text' in p and not p.get('thought', False)]
+    final_text = "\n".join(text_chunks).strip()
+
+    if not final_text:
+        raise Exception(f"[{clean_name}] Respons teks kosong.")
+    return final_text
+
 
 def call_backup_ai(prompt, temp=0.1):
     if not BACKUP_AI_API_KEY:
@@ -981,12 +1029,12 @@ def call_backup_ai(prompt, temp=0.1):
         raise Exception(f"[Backup AI] HTTP {response.status_code}: {data}")
     return data['choices'][0]['message']['content']
 
+
 def answer_user_question_with_ai(question, market_summary, eval_data, metrics, cfg):
-    """Asisten AI interaktif yang menjawab pertanyaan user tentang strategi & rencana bot saat ini."""
     active_pos = json.dumps(cfg.get("active_trade")) if cfg.get("active_trade") else "Tidak ada posisi aktif"
     pending_ord = json.dumps(cfg.get("pending_order")) if cfg.get("pending_order") else "Tidak ada pending limit order"
     bot_state = "PAUSED (Dijeda)" if cfg.get("bot_paused", False) else "AKTIF (Memantau tiap 5 menit)"
-    
+
     prompt = f"""
     Kamu adalah asisten AI pribadi dari bot trading SOL/USDT milik pengguna ("Argon Pro Sniper Bot").
     Jawablah pertanyaan pengguna secara jujur, transparan, terstruktur, dan mudah dipahami dalam Bahasa Indonesia berdasarkan kondisi nyata sistem saat ini.
@@ -1009,36 +1057,36 @@ def answer_user_question_with_ai(question, market_summary, eval_data, metrics, c
     {market_summary}
 
     INSTRUKSI JAWABAN:
-    1. Jawab langsung pertanyaan pengguna dengan merujuk pada angka harga nyata (seperti harga SOL saat ini, area Support/Resistance 24 jam, EMA 99 5m/15m, atau SMI/ADX).
+    1. Jawab langsung pertanyaan pengguna dengan merujuk pada angka harga nyata (harga SOL saat ini, area Support/Resistance 24 jam, EMA 99 5m/15m, atau SMI/ADX).
     2. Jelaskan dengan spesifik skenario harga dan konfirmasi candle apa yang sedang ditunggu bot sebelum mengeksekusi order berikutnya.
-    3. Gunakan format poin-poin singkat yang rapi agar enak dibaca di layar HP Telegram (maksimal 220 kata).
+    3. Gunakan format poin-poin singkat yang rapi (maksimal 220 kata) tanpa memakai simbol bintang ganda atau garis bawah yang rumit.
     """
 
     model_priority = [
-        "gemini-4-hydrogen",
         "gemma-4-31b-it",
-        "gemma-4-26b-a4b-it",
-        "gemini-3.8-flash",
-        "gemini-3.5-flash-lite",
-        "gemini-3.1-flash-lite-preview"
+        "gemini-3.1-flash-lite-preview",
+        "gemini-2.5-flash",
+        "gemma-4-26b-a4b-it"
     ]
 
     for key_idx, api_key in enumerate(GEMINI_API_KEYS, start=1):
         for model_name in model_priority:
             try:
-                reply = call_gemini(model_name, prompt, api_key, temp=0.35, max_tokens=1100)
-                return f"🤖 *JAWABAN ASISTEN ARGON* (`{model_name} #Akun{key_idx}`)\n\n{reply.strip()}"
+                reply = call_gemini(model_name, prompt, api_key, temp=0.35, max_tokens=2048)
+                if reply and len(reply.strip()) >= 15:
+                    clean_reply = reply.replace("**", "*").strip()
+                    return f"🤖 *JAWABAN ASISTEN ARGON* (`{model_name} #Akun{key_idx}`)\n\n{clean_reply}"
             except Exception as e:
                 print(f"Lewati QA Akun#{key_idx} {model_name}: {e}")
 
     if BACKUP_AI_API_KEY:
         try:
             reply = call_backup_ai(prompt, temp=0.35)
-            return f"🤖 *JAWABAN ASISTEN ARGON* (`{BACKUP_AI_MODEL}`)\n\n{reply.strip()}"
+            if reply and len(reply.strip()) >= 15:
+                return f"🤖 *JAWABAN ASISTEN ARGON* (`{BACKUP_AI_MODEL}`)\n\n{reply.strip()}"
         except Exception as e:
             print(f"Lewati QA Backup AI: {e}")
 
-    # Fallback terstruktur jika semua API AI sedang limit
     return (
         f"🤖 *RINGKASAN STATUS & RENCANA BOT (MODE LOKAL)*\n\n"
         f"• *Status Bot:* `{bot_state}` | *Rezim Pasar:* `{eval_data['regime']}`\n"
@@ -1050,6 +1098,7 @@ def answer_user_question_with_ai(question, market_summary, eval_data, metrics, c
         f"  - SMI 5m: `{metrics['smi']}` | ADX 5m: `{metrics['adx_5m']}`\n"
         f"• *Kondisi Ditunggu:* {eval_data['setup_note']}"
     )
+
 
 def build_prompt(current_price, market_summary, eval_data, cfg):
     tp_val = cfg['tp']
@@ -1090,12 +1139,13 @@ def build_prompt(current_price, market_summary, eval_data, cfg):
     }}
     """
 
+
 def local_quant_fallback(m, eval_data, cfg):
     price = m["price"]
     signal = "WAIT"
     order_type = "LIMIT" if eval_data["prefer_limit"] else "MARKET"
     entry_p = price
-    
+
     if eval_data["allow_long"]:
         signal = "LONG"
         entry_p = eval_data["suggested_limit_long"] if order_type == "LIMIT" else price
@@ -1116,15 +1166,14 @@ def local_quant_fallback(m, eval_data, cfg):
     }
     return res, "Argon-Sniper-Engine"
 
+
 def analyze_market_with_fallback(current_price, market_summary, metrics, eval_data, cfg):
     prompt = build_prompt(current_price, market_summary, eval_data, cfg)
     model_priority = [
-        "gemini-4-hydrogen",
         "gemma-4-31b-it",
-        "gemma-4-26b-a4b-it",
-        "gemini-3.8-flash",
-        "gemini-3.5-flash-lite",
-        "gemini-3.1-flash-lite-preview"
+        "gemini-3.1-flash-lite-preview",
+        "gemini-2.5-flash",
+        "gemma-4-26b-a4b-it"
     ]
 
     ai_result = None
@@ -1163,20 +1212,19 @@ def analyze_market_with_fallback(current_price, market_summary, metrics, eval_da
 
     return ai_result, used_engine
 
+
 if __name__ == "__main__":
     config = load_config()
     config, is_manual_scan, user_question = process_telegram_commands(config)
-    
+
     try:
         price, market_summary, metrics = fetch_market_data()
         eval_data = evaluate_professional_setup(metrics, config)
 
-        # Jika user mengirim pertanyaan bebas di chat Telegram, jawab langsung menggunakan AI
         if user_question:
             qa_reply = answer_user_question_with_ai(user_question, market_summary, eval_data, metrics, config)
             send_telegram(qa_reply)
-        
-        # 1. Pantau Pending Limit Order atau Posisi Aktif yang sudah berjalan
+
         if config.get("pending_order"):
             config, limit_status, limit_msg = monitor_pending_limit_order(config, metrics)
             if limit_status in ["CANCELLED_MISSED", "CANCELLED_EXPIRED", "FILLED"]:
@@ -1191,10 +1239,9 @@ if __name__ == "__main__":
             elif trade_status == "STILL_RUNNING" and is_manual_scan:
                 send_telegram(trade_msg)
 
-        # 2. Jika bot sedang PAUSED, jangan cari sinyal baru (kecuali user menekan /cek manual)
         elif config.get("bot_paused", False) and not is_manual_scan:
             print("Bot sedang dalam status PAUSED. Tidak mencari sinyal baru.")
-                
+
         else:
             if not eval_data["allow_long"] and not eval_data["allow_short"] and not is_manual_scan:
                 print(f"Hemat Kuota AI (Mode Sniper): {eval_data['regime']} | {eval_data['setup_note']}")
@@ -1204,16 +1251,16 @@ if __name__ == "__main__":
                 order_type = str(ai_data.get("order_type", "MARKET")).upper()
                 if order_type not in ["MARKET", "LIMIT"]:
                     order_type = "LIMIT" if eval_data["prefer_limit"] else "MARKET"
-                    
+
                 reason = ai_data.get("reasoning", eval_data["setup_note"])
                 anticipation = ai_data.get("anticipation", "Jika level kunci ditembus balik, biarkan SL bekerja; saat +1R pindah SL ke entry.")
                 key_zone = ai_data.get("key_zone_24h", f"24H H:${metrics['day_map']['day_high']} L:${metrics['day_map']['day_low']}")
                 candle_conf = ai_data.get("candle_confirmation", f"{metrics['prev_candle']['pattern']}")
-                
+
                 if sig in ["LONG", "SHORT"]:
                     tp_dist = float(config["tp"])
                     sl_dist = float(config["sl"])
-                    
+
                     if order_type == "LIMIT":
                         raw_entry = float(ai_data.get("entry_price", 0))
                         if sig == "LONG":
@@ -1279,7 +1326,7 @@ if __name__ == "__main__":
                             f"💡 *Analisis:* {reason}"
                         )
                         send_telegram(msg)
-                    
+
                 elif is_manual_scan:
                     pause_note = " *(Status Bot: PAUSED)*" if config.get("bot_paused", False) else ""
                     msg = (
