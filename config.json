@@ -6,24 +6,12 @@
   "strategy": "1. Deteksi Rezim Pasti (ADX 14 + Chop EMA 200): Pastikan pasar TRENDING (ADX >= 22 dan struktur jelas) atau SIDEWAYS (ADX < 22 atau harga bolak-balik menembus EMA 200). 2. Mode TRENDING: Wajib ikuti struktur (HH/HL untuk LONG, LH/LL untuk SHORT) dan tunggu pantulan presisi di EMA 99 (5m/15m) atau klaster EMA 20/21/50. 3. Mode SIDEWAYS: Hentikan EMA sebagai acuan utama; gunakan peta Support/Resistance 24 jam + Stochastic Momentum Index (SMI jenuh jual <= -35 untuk LONG, jenuh beli >= +35 untuk SHORT) + candle konfirmasi. 4. Anti-Pisau Jatuh: Dilarang keras LONG saat candle masih merah/turun tanpa konfirmasi bullish; dilarang SHORT saat candle masih hijau/naik tanpa konfirmasi bearish.",
   "last_update_id": 698291204,
   "pending_order": null,
-  "active_trade": {
-    "direction": "LONG",
-    "order_type": "MARKET",
-    "entry_price": 70.99,
-    "tp_price": 71.59,
-    "sl_price": 70.76,
-    "initial_sl_dist": 0.23,
-    "bep_trigger_price": 71.22,
-    "bep_moved": false,
-    "entry_open_time": 1795655400000,
-    "entry_time": "26/11 08:11 WIB",
-    "reason": "Regime trending kuat, struktur HH/HL valid, harga memantul dari klaster EMA 5M dengan konfirmasi bullish."
-  },
+  "active_trade": null,
   "stats": {
-    "total_closed": 2,
+    "total_closed": 3,
     "tp_hit": 1,
     "sl_hit": 0,
-    "bep_hit": 1,
+    "bep_hit": 2,
     "cancelled_limits": 1,
     "net_points": 0.6
   }
