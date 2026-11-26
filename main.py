@@ -67,13 +67,13 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2)
 
 def register_bot_commands():
-    """Mendaftarkan tombol menu perintah resmi ke Telegram Bot API."""
     if not TELEGRAM_BOT_TOKEN:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setMyCommands"
     commands = [
         {"command": "menu", "description": "Buka panel kendali utama"},
         {"command": "cek", "description": "Audit pasar 24 jam & cek posisi"},
+        {"command": "tanya", "description": "Tanya AI kondisi & rencana bot saat ini"},
         {"command": "pause", "description": "Jeda pencarian sinyal sementara"},
         {"command": "resume", "description": "Aktifkan kembali pencarian sinyal"},
         {"command": "stats", "description": "Lihat evaluasi TP, SL, dan 1:1 BEP"},
@@ -145,7 +145,7 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON PRO*"):
             f"   TP: `${pending['tp_price']}` | SL: `${pending['sl_price']}`"
         )
     else:
-        pos_info = f"📌 *STATUS POSISI:* `Kosong (Peta 24J + EMA 99 + ADX/SMI)`"
+        pos_info = f"📌 *STATUS POSISI:* `Kosong (Ketik pertanyaan apa saja untuk tanya AI)`"
 
     text = (
         f"{header}\n\n"
@@ -162,10 +162,10 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON PRO*"):
             [{"text": toggle_label, "callback_data": "toggle_trading"}],
             [
                 {"text": "📊 Cek Pasar 24J", "callback_data": "scan_now"},
-                {"text": "📈 Evaluasi", "callback_data": "show_stats"}
+                {"text": "💬 Cara Tanya AI", "callback_data": "ask_help"}
             ],
             [
-                {"text": "✏️ Panduan", "callback_data": "help_edit"},
+                {"text": "📈 Evaluasi", "callback_data": "show_stats"},
                 {"text": "🔄 Refresh", "callback_data": "show_menu"}
             ]
         ]
@@ -180,13 +180,14 @@ def process_telegram_commands(cfg):
         res = requests.get(url, params=params, timeout=15).json()
     except Exception as e:
         print(f"Gagal cek perintah Telegram: {e}")
-        return cfg, False
+        return cfg, False, None
 
     if not res.get("ok"):
-        return cfg, False
+        return cfg, False, None
 
     menu_requested = False
     manual_scan_requested = False
+    user_questions = []
 
     for update in res.get("result", []):
         cfg["last_update_id"] = update["update_id"]
@@ -216,16 +217,14 @@ def process_telegram_commands(cfg):
                 send_control_menu(cfg)
             elif action == "show_stats":
                 send_telegram(format_stats_text(cfg))
-            elif action == "help_edit":
+            elif action == "ask_help":
                 help_text = (
-                    "📝 *PANDUAN PERINTAH TELEGRAM*\n\n"
-                    "• `/menu` — Membuka panel tombol kendali\n"
-                    "• `/pause` — Menghentikan pencarian sinyal sementara\n"
-                    "• `/resume` — Melanjutkan pencarian sinyal\n"
-                    "• `/cek` — Audit peta 24 jam / cek posisi aktif\n"
-                    "• `/stats` — Melihat rekap evaluasi TP, SL, & BEP\n"
-                    "• `/tp 0.60` | `/sl 0.23` — Ubah target TP / SL\n"
-                    "• `/reset_trade` — Hapus posisi aktif / limit menunggu"
+                    "💬 *ASISTEN TANYA JAWAB AI AKTIF*\n\n"
+                    "Anda bisa langsung mengetik pertanyaan bebas di chat ini, misalnya:\n"
+                    "• _\"Strategi apa yang sekarang dijalankan bot?\"_\n"
+                    "• _\"Area harga berapa yang sedang ditunggu untuk entry?\"_\n"
+                    "• _\"Kenapa bot belum masuk posisi saat ini?\"_\n\n"
+                    "Bot akan menganalisis kondisi pasar live + konfigurasi strategi lalu menjawabnya pada siklus pengecekan berikutnya."
                 )
                 send_telegram(help_text)
             elif action == "scan_now":
@@ -278,11 +277,18 @@ def process_telegram_commands(cfg):
                 if new_strat:
                     cfg["strategy"] = new_strat
                     send_telegram(f"✅ *Strategi AI Diperbarui:*\n_{new_strat}_")
+            elif lower_text.startswith("/tanya"):
+                q_body = text[6:].strip()
+                user_questions.append(q_body if q_body else "Jelaskan strategi yang sedang dijalankan bot saat ini dan rencana eksekusi yang sedang ditunggu.")
+            elif not text.startswith("/"):
+                # Semua pesan teks non-perintah dianggap pertanyaan langsung ke AI bot
+                user_questions.append(text)
 
     if menu_requested:
         send_control_menu(cfg)
 
-    return cfg, manual_scan_requested
+    combined_question = "\n".join(user_questions).strip() if user_questions else None
+    return cfg, manual_scan_requested, combined_question
 
 def calc_ema_series(values, period):
     k = 2 / (period + 1)
@@ -307,7 +313,6 @@ def calc_atr(highs, lows, closes, period=14):
     return round(atr_series[-1], 4)
 
 def calc_adx(highs, lows, closes, period=14):
-    """Menghitung ADX(14) untuk membedakan tren kuat vs pasar sideways secara objektif."""
     if len(closes) < period + 2:
         return 20.0
     plus_dm, minus_dm, tr_list = [0.0], [0.0], [highs[0] - lows[0]]
@@ -362,7 +367,6 @@ def calc_smi_series(highs, lows, closes, length=10, smooth1=3, smooth2=3):
     return round(smi_vals[-1], 2), round(smi_sig[-1], 2), round(smi_vals[-2], 2)
 
 def detect_swing_levels(highs, lows, closes, lookback=36):
-    """Mendeteksi struktur swing (HH/HL vs LH/LL) dan level S/R penting dari data historis lebar."""
     sub_h = highs[-lookback:]
     sub_l = lows[-lookback:]
     third = len(sub_h) // 3
@@ -370,7 +374,6 @@ def detect_swing_levels(highs, lows, closes, lookback=36):
     h1, h2, h3 = max(sub_h[:third]), max(sub_h[third:2*third]), max(sub_h[2*third:])
     l1, l2, l3 = min(sub_l[:third]), min(sub_l[third:2*third]), min(sub_l[2*third:])
     
-    # Cek apakah terbentuk Lower High (LH) atau Higher Low (HL) yang valid
     if h3 > h2 and l3 > l2 and closes[-1] > l3:
         return 1.0, "UPTREND (HH/HL)", round(h3, 3), round(l3, 3)
     elif h3 < h2 and l3 < l2 and closes[-1] < h3:
@@ -383,12 +386,10 @@ def detect_swing_levels(highs, lows, closes, lookback=36):
         return 0.0, "RANGE / SIDEWAYS", round(max(h2, h3), 3), round(min(l2, l3), 3)
 
 def map_24h_key_zones(highs_5m, lows_5m, closes_5m):
-    """Memetakan peta area penting 24 jam penuh (288 candle 5m) seperti trader profesional."""
     day_high = round(max(highs_5m), 3)
     day_low = round(min(lows_5m), 3)
     day_mid = round((day_high + day_low) / 2.0, 3)
     
-    # Cari cluster penolakan (swing pivot) dalam 24 jam terakhir
     pivot_highs = []
     pivot_lows = []
     for i in range(4, len(highs_5m) - 4):
@@ -397,7 +398,6 @@ def map_24h_key_zones(highs_5m, lows_5m, closes_5m):
         if lows_5m[i] == min(lows_5m[i-4:i+5]):
             pivot_lows.append(lows_5m[i])
             
-    # Kelompokkan zona dengan jarak <= 0.18 poin untuk menemukan area yang diuji berkali-kali
     def cluster_zones(levels):
         if not levels:
             return []
@@ -408,7 +408,6 @@ def map_24h_key_zones(highs_5m, lows_5m, closes_5m):
                 clusters[-1].append(lv)
             else:
                 clusters.append([lv])
-        # Urutkan berdasarkan seberapa sering zona tersebut memantulkan harga
         ranked = sorted(clusters, key=lambda c: len(c), reverse=True)
         return [(round(sum(c)/len(c), 3), len(c)) for c in ranked[:4]]
 
@@ -463,9 +462,8 @@ def analyze_candle_anatomy(o, h, l, c, v, avg_v):
     }
 
 def fetch_market_data():
-    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Pro/5.0'}
+    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Pro/5.1'}
     
-    # Tarik 288 candle 5m = 24 JAM PENUH (1 hari) untuk peta area kunci yang luas
     url_5m = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=5m&limit=288"
     res_5m = requests.get(url_5m, headers=headers, timeout=15)
     if res_5m.status_code != 200:
@@ -493,7 +491,6 @@ def fetch_market_data():
     ema200_series = calc_ema_series(closes, 200)
     ema200 = round(ema200_series[-1], 3)
     
-    # Hitung berapa kali harga bolak-balik memotong EMA 200 dalam 36 candle (3 jam terakhir)
     ema200_crosses = 0
     for i in range(-36, -1):
         prev_above = closes[i] > ema200_series[i]
@@ -526,7 +523,6 @@ def fetch_market_data():
     prev_candle_anatomy = analyze_candle_anatomy(opens[-2], highs[-2], lows[-2], closes[-2], vols[-2], avg_vol_20)
     curr_candle_anatomy = analyze_candle_anatomy(opens[-1], highs[-1], lows[-1], closes[-1], vols[-1], avg_vol_20)
     
-    # Data 15m (120 candle = 30 jam) untuk EMA 99 15m, ADX 15m, dan SMI 15m
     struct_15m, struct_15m_label, sh_15m, sl_15m = 0.0, "TIDAK TERSEDIA", sh_5m, sl_5m
     ema20_15m, ema50_15m, ema99_15m, ema200_15m = ema20, ema50, ema99, ema200
     smi_15m, smi_sig_15m, smi_15m_prev = smi_5m, smi_sig_5m, smi_5m_prev
@@ -614,11 +610,6 @@ def fetch_market_data():
     return current_price, summary, metrics
 
 def evaluate_professional_setup(m, cfg):
-    """
-    Menentukan Rezim Pasar secara pasti (TRENDING vs SIDEWAYS),
-    melarang entry melawan candle yang masih jatuh/naik tanpa konfirmasi,
-    dan hanya mengizinkan setup berprobabilitas tinggi (EMA 99 bounce di trend / S&R 24J + SMI di sideways).
-    """
     price = m["price"]
     tp_dist = float(cfg["tp"])
     sl_dist = float(cfg["sl"])
@@ -627,12 +618,9 @@ def evaluate_professional_setup(m, cfg):
     adx_15m = m["adx_15m"]
     crosses = m["ema200_crosses_3h"]
     
-    c_prev2 = m["prev2_candle"]
     c_prev = m["prev_candle"]
     c_curr = m["curr_candle"]
 
-    # 1. DETEKSI REZIM PASAR YANG PASTI (TRENDING vs SIDEWAYS)
-    # Jika harga bolak-balik melewati EMA 200 (>= 3 kali dalam 3 jam) atau ADX lemah (< 21), maka pasar SIDEWAYS!
     is_choppy_ema200 = crosses >= 3
     if is_choppy_ema200 or (adx_5m < 21.0 and adx_15m < 22.0) or (m["struct_5m"] == 0.0 and m["struct_15m"] == 0.0):
         regime = "SIDEWAYS"
@@ -641,7 +629,6 @@ def evaluate_professional_setup(m, cfg):
         regime = "TRENDING"
         regime_reason = f"TRENDING (ADX 5m={adx_5m}, 15m={adx_15m}, 5M: {m['struct_5m_label']}, 15M: {m['struct_15m_label']}) -> Gunakan Struktur LH/LL atau HH/HL + Pantulan EMA 99 / Klaster EMA."
 
-    # 2. CEK VOLATILITAS WAJAR
     if atr_5m > 0.36 or max(c_curr["range"], c_prev["range"]) > 0.45:
         return {
             "regime": "CHOPPY_EXTREME",
@@ -655,14 +642,11 @@ def evaluate_professional_setup(m, cfg):
             "suggested_limit_short": price
         }
 
-    # 3. ANTI-PISAU JATUH & WAJIB KONFIRMASI CANDLE BERBALIK
-    # Jangan LONG kalau candle sebelumnya merah & candle sekarang masih merah/turun
     bullish_confirmed = (
         (c_prev["dir"] == "BULLISH" and c_prev["body_pct"] >= 35 and c_curr["close"] >= c_prev["open"]) or
         (c_prev["lower_wick_pct"] >= 42 and c_curr["dir"] == "BULLISH") or
         (c_curr["dir"] == "BULLISH" and c_curr["body_pct"] >= 50 and c_curr["close"] > c_prev["high"])
     )
-    # Jangan SHORT kalau candle sebelumnya hijau & candle sekarang masih hijau/naik
     bearish_confirmed = (
         (c_prev["dir"] == "BEARISH" and c_prev["body_pct"] >= 35 and c_curr["close"] <= c_prev["open"]) or
         (c_prev["upper_wick_pct"] >= 42 and c_curr["dir"] == "BEARISH") or
@@ -678,13 +662,10 @@ def evaluate_professional_setup(m, cfg):
     res_levels = [day_map["day_high"], m["sh_15m"], m["sh_5m"]] + [z[0] for z in day_map["major_res_zones"]]
     sup_levels = [day_map["day_low"], m["sl_15m"], m["sl_5m"]] + [z[0] for z in day_map["major_sup_zones"]]
 
-    # Jarak toleransi sentuhan level penting
     zone_tol = max(0.18, round(atr_5m * 1.25, 3))
 
     if regime == "SIDEWAYS":
         strategy_mode = "SIDEWAYS_SR_24H_SMI"
-        # Di pasar SIDEWAYS: JANGAN gunakan EMA sebagai indikator utama!
-        # Cari harga di area Support/Resistance kuat 24 jam atau Upper/Lower BB + SMI jenuh + candle konfirmasi
         near_major_sup = any(abs(min(price, c_prev["low"], c_curr["low"]) - sup) <= zone_tol for sup in sup_levels) or (c_prev["low"] <= m["bb_lower"] * 1.001)
         near_major_res = any(abs(max(price, c_prev["high"], c_curr["high"]) - res) <= zone_tol for res in res_levels) or (c_prev["high"] >= m["bb_upper"] * 0.999)
         
@@ -705,7 +686,6 @@ def evaluate_professional_setup(m, cfg):
 
     else:
         strategy_mode = "TREND_STRUCTURE_EMA99"
-        # Di pasar TRENDING: Wajib ikuti struktur (HH/HL atau LH/LL) + Pantulan EMA 99 (5m/15m) atau EMA 20/21/50 + Candle Konfirmasi
         ema99_levels = [m["ema99"], m["ema99_15m"]]
         trend_emas = [m["ema99"], m["ema99_15m"], m["ema20"], m["ema21"], m["ema50"]]
         
@@ -718,7 +698,6 @@ def evaluate_professional_setup(m, cfg):
             for e in trend_emas
         )
 
-        # Struktur Naik (HH/HL atau HL) -> Hanya cari LONG setelah pullback ke EMA 99 / trend EMA + candle bullish
         if (m["struct_5m"] > 0 or m["struct_15m"] > 0) and m["struct_5m"] >= 0 and m["struct_15m"] >= 0:
             if (touched_ema99 or touched_trend_ema) and price >= m["ema99"] * 0.9985 and bullish_confirmed:
                 allow_long = True
@@ -727,7 +706,6 @@ def evaluate_professional_setup(m, cfg):
             else:
                 setup_notes.append(f"TREND LONG menunggu pantulan EMA 99/20/50 & candle bullish (TouchedEMA={touched_trend_ema}, CandleBull={bullish_confirmed}).")
 
-        # Struktur Turun (LH/LL atau LH) -> Hanya cari SHORT setelah pullback naik ke EMA 99 / trend EMA + candle bearish
         if (m["struct_5m"] < 0 or m["struct_15m"] < 0) and m["struct_5m"] <= 0 and m["struct_15m"] <= 0:
             if (touched_ema99 or touched_trend_ema) and price <= m["ema99"] * 1.0015 and bearish_confirmed:
                 allow_short = True
@@ -736,7 +714,6 @@ def evaluate_professional_setup(m, cfg):
             else:
                 setup_notes.append(f"TREND SHORT menunggu penolakan EMA 99/20/50 & candle bearish (TouchedEMA={touched_trend_ema}, CandleBear={bearish_confirmed}).")
 
-    # 4. PASTIKAN JALUR TP 0.60 POIN MASUK AKAL (TIDAK MENABRAK DINDING UTAMA 24J)
     min_room = round(tp_dist * 0.65, 3)
     if allow_long:
         blocking_res = [r for r in res_levels if 0.12 < (r - price) < min_room]
@@ -970,6 +947,110 @@ def monitor_active_trade(cfg, metrics):
     )
     return cfg, "STILL_RUNNING", status_msg
 
+def extract_json_safely(raw_text):
+    clean = raw_text.replace("```json", "").replace("```", "").strip()
+    start = clean.find("{")
+    end = clean.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        clean = clean[start:end+1]
+    return json.loads(clean)
+
+def call_gemini(model_name, prompt, api_key, temp=0.1, max_tokens=950):
+    clean_name = model_name.replace("models/", "")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_name}:generateContent?key={api_key}"
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": temp, "maxOutputTokens": max_tokens}
+    }
+    response = requests.post(url, headers=headers, json=payload, timeout=45)
+    data = response.json()
+    if response.status_code != 200:
+        error_msg = data.get('error', {}).get('message', str(data))
+        raise Exception(f"[{clean_name}] HTTP {response.status_code}: {error_msg}")
+    return data['candidates'][0]['content']['parts'][0]['text']
+
+def call_backup_ai(prompt, temp=0.1):
+    if not BACKUP_AI_API_KEY:
+        raise Exception("BACKUP_AI_API_KEY belum diisi.")
+    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {BACKUP_AI_API_KEY}'}
+    payload = {"model": BACKUP_AI_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": temp}
+    response = requests.post(BACKUP_AI_URL, headers=headers, json=payload, timeout=45)
+    data = response.json()
+    if response.status_code != 200:
+        raise Exception(f"[Backup AI] HTTP {response.status_code}: {data}")
+    return data['choices'][0]['message']['content']
+
+def answer_user_question_with_ai(question, market_summary, eval_data, metrics, cfg):
+    """Asisten AI interaktif yang menjawab pertanyaan user tentang strategi & rencana bot saat ini."""
+    active_pos = json.dumps(cfg.get("active_trade")) if cfg.get("active_trade") else "Tidak ada posisi aktif"
+    pending_ord = json.dumps(cfg.get("pending_order")) if cfg.get("pending_order") else "Tidak ada pending limit order"
+    bot_state = "PAUSED (Dijeda)" if cfg.get("bot_paused", False) else "AKTIF (Memantau tiap 5 menit)"
+    
+    prompt = f"""
+    Kamu adalah asisten AI pribadi dari bot trading SOL/USDT milik pengguna ("Argon Pro Sniper Bot").
+    Jawablah pertanyaan pengguna secara jujur, transparan, terstruktur, dan mudah dipahami dalam Bahasa Indonesia berdasarkan kondisi nyata sistem saat ini.
+
+    PERTANYAAN PENGGUNA:
+    "{question}"
+
+    KONDISI SISTEM BOT SAAT INI:
+    - Status Scanner Bot: {bot_state}
+    - Mode Eksekusi: {"LIVE ON" if cfg.get("live_trading") else "OFF (Signal Only / Dry Run)"}
+    - Setting TP / SL: +{cfg.get("tp")} poin / -{cfg.get("sl")} poin (dengan geser SL ke entry saat +1R)
+    - Rezim Pasar Terdeteksi Saat Ini: {eval_data['regime']} ({eval_data['regime_reason']})
+    - Mode Strategi yang Sedang Dijalankan: {eval_data['strategy_mode']}
+    - Status Saringan Eksekusi Saat Ini: {eval_data['setup_note']}
+    - Posisi Aktif di Memori: {active_pos}
+    - Pending Limit Order di Memori: {pending_ord}
+    - Aturan Strategi Lengkap di Config: {cfg.get('strategy')}
+
+    DATA PASAR LIVE TERBARU (24 JAM + 5M/15M/1H):
+    {market_summary}
+
+    INSTRUKSI JAWABAN:
+    1. Jawab langsung pertanyaan pengguna dengan merujuk pada angka harga nyata (seperti harga SOL saat ini, area Support/Resistance 24 jam, EMA 99 5m/15m, atau SMI/ADX).
+    2. Jelaskan dengan spesifik skenario harga dan konfirmasi candle apa yang sedang ditunggu bot sebelum mengeksekusi order berikutnya.
+    3. Gunakan format poin-poin singkat yang rapi agar enak dibaca di layar HP Telegram (maksimal 220 kata).
+    """
+
+    model_priority = [
+        "gemini-4-hydrogen",
+        "gemma-4-31b-it",
+        "gemma-4-26b-a4b-it",
+        "gemini-3.8-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite-preview"
+    ]
+
+    for key_idx, api_key in enumerate(GEMINI_API_KEYS, start=1):
+        for model_name in model_priority:
+            try:
+                reply = call_gemini(model_name, prompt, api_key, temp=0.35, max_tokens=1100)
+                return f"🤖 *JAWABAN ASISTEN ARGON* (`{model_name} #Akun{key_idx}`)\n\n{reply.strip()}"
+            except Exception as e:
+                print(f"Lewati QA Akun#{key_idx} {model_name}: {e}")
+
+    if BACKUP_AI_API_KEY:
+        try:
+            reply = call_backup_ai(prompt, temp=0.35)
+            return f"🤖 *JAWABAN ASISTEN ARGON* (`{BACKUP_AI_MODEL}`)\n\n{reply.strip()}"
+        except Exception as e:
+            print(f"Lewati QA Backup AI: {e}")
+
+    # Fallback terstruktur jika semua API AI sedang limit
+    return (
+        f"🤖 *RINGKASAN STATUS & RENCANA BOT (MODE LOKAL)*\n\n"
+        f"• *Status Bot:* `{bot_state}` | *Rezim Pasar:* `{eval_data['regime']}`\n"
+        f"• *Strategi Berjalan:* `{eval_data['strategy_mode']}`\n"
+        f"• *Harga SOL Sekarang:* `${metrics['price']}`\n"
+        f"• *Area Kunci yang Dipantau:*\n"
+        f"  - 24J High: `${metrics['day_map']['day_high']}` | 24J Low: `${metrics['day_map']['day_low']}`\n"
+        f"  - EMA 99 (5m): `${metrics['ema99']}` | EMA 99 (15m): `${metrics['ema99_15m']}`\n"
+        f"  - SMI 5m: `{metrics['smi']}` | ADX 5m: `{metrics['adx_5m']}`\n"
+        f"• *Kondisi Ditunggu:* {eval_data['setup_note']}"
+    )
+
 def build_prompt(current_price, market_summary, eval_data, cfg):
     tp_val = cfg['tp']
     sl_val = cfg['sl']
@@ -1008,40 +1089,6 @@ def build_prompt(current_price, market_summary, eval_data, cfg):
       "reasoning": "<Penjelasan profesional singkat Bahasa Indonesia>"
     }}
     """
-
-def extract_json_safely(raw_text):
-    clean = raw_text.replace("```json", "").replace("```", "").strip()
-    start = clean.find("{")
-    end = clean.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        clean = clean[start:end+1]
-    return json.loads(clean)
-
-def call_gemini(model_name, prompt, api_key):
-    clean_name = model_name.replace("models/", "")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_name}:generateContent?key={api_key}"
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 900}
-    }
-    response = requests.post(url, headers=headers, json=payload, timeout=45)
-    data = response.json()
-    if response.status_code != 200:
-        error_msg = data.get('error', {}).get('message', str(data))
-        raise Exception(f"[{clean_name}] HTTP {response.status_code}: {error_msg}")
-    return data['candidates'][0]['content']['parts'][0]['text']
-
-def call_backup_ai(prompt):
-    if not BACKUP_AI_API_KEY:
-        raise Exception("BACKUP_AI_API_KEY belum diisi.")
-    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {BACKUP_AI_API_KEY}'}
-    payload = {"model": BACKUP_AI_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.1}
-    response = requests.post(BACKUP_AI_URL, headers=headers, json=payload, timeout=45)
-    data = response.json()
-    if response.status_code != 200:
-        raise Exception(f"[Backup AI] HTTP {response.status_code}: {data}")
-    return data['choices'][0]['message']['content']
 
 def local_quant_fallback(m, eval_data, cfg):
     price = m["price"]
@@ -1106,7 +1153,6 @@ def analyze_market_with_fallback(current_price, market_summary, metrics, eval_da
     if ai_result is None:
         ai_result, used_engine = local_quant_fallback(metrics, eval_data, cfg)
 
-    # Kunci keras: AI tidak pernah boleh meloloskan sinyal jika saringan kuantitatif menolaknya
     sig = str(ai_result.get("signal", "WAIT")).upper()
     if sig == "LONG" and not eval_data["allow_long"]:
         ai_result["signal"] = "WAIT"
@@ -1119,12 +1165,18 @@ def analyze_market_with_fallback(current_price, market_summary, metrics, eval_da
 
 if __name__ == "__main__":
     config = load_config()
-    config, is_manual_scan = process_telegram_commands(config)
+    config, is_manual_scan, user_question = process_telegram_commands(config)
     
     try:
         price, market_summary, metrics = fetch_market_data()
+        eval_data = evaluate_professional_setup(metrics, config)
+
+        # Jika user mengirim pertanyaan bebas di chat Telegram, jawab langsung menggunakan AI
+        if user_question:
+            qa_reply = answer_user_question_with_ai(user_question, market_summary, eval_data, metrics, config)
+            send_telegram(qa_reply)
         
-        # 1. Tetap pantau Pending Limit Order atau Posisi Aktif yang sudah terlanjur berjalan meskipun bot di-pause
+        # 1. Pantau Pending Limit Order atau Posisi Aktif yang sudah berjalan
         if config.get("pending_order"):
             config, limit_status, limit_msg = monitor_pending_limit_order(config, metrics)
             if limit_status in ["CANCELLED_MISSED", "CANCELLED_EXPIRED", "FILLED"]:
@@ -1144,9 +1196,6 @@ if __name__ == "__main__":
             print("Bot sedang dalam status PAUSED. Tidak mencari sinyal baru.")
                 
         else:
-            eval_data = evaluate_professional_setup(metrics, config)
-            
-            # Hemat Kuota AI: Panggil AI hanya jika setup lolos saringan probabilitas tinggi ATAU user minta /cek manual
             if not eval_data["allow_long"] and not eval_data["allow_short"] and not is_manual_scan:
                 print(f"Hemat Kuota AI (Mode Sniper): {eval_data['regime']} | {eval_data['setup_note']}")
             else:
@@ -1246,7 +1295,7 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Error siklus: {e}")
-        if is_manual_scan:
+        if is_manual_scan or user_question:
             send_telegram(f"⚠️ *Argon System Warning*\n\n`{str(e)}`")
 
     save_config(config)
