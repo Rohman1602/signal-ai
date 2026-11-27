@@ -11,10 +11,10 @@
     "order_type": "LIMIT",
     "entry_price": 71.91,
     "tp_price": 71.31,
-    "sl_price": 72.14,
+    "sl_price": 71.91,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 71.68,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795815300000,
     "entry_time": "28/11 04:35 WIB",
     "reason": "Struktur LH/LL dominan, CVD negatif, harga tertahan di bawah EMA 20/50. Entry pada pullback."
