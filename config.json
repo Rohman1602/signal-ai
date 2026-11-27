@@ -6,24 +6,12 @@
   "strategy": "1. Deteksi Rezim Pasti (ADX 14 + Chop EMA 200): Pastikan pasar TRENDING (ADX kuat & struktur jelas) atau SIDEWAYS (ADX lemah atau harga bolak-balik menembus EMA 200). 2. Mode TRENDING: Wajib ikuti struktur (HH/HL untuk LONG, LH/LL untuk SHORT) dan tunggu pantulan presisi di EMA 99 (5m/15m) atau klaster EMA 20/21/50. 3. Mode SIDEWAYS (Acuan 15m -> Eksekusi 5m): Gunakan timeframe 15m sebagai acuan utama; wajib menyentuh atau sangat dekat dengan Upper/Lower Bollinger Band 15m + SMI 15m jenuh beli (>= +25) / jenuh jual (<= -25) berbalik arah + zona S/R 24 jam, lalu eksekusi tetap menunggu konfirmasi candle terbaik di timeframe 5m. 4. Anti-Pisau Jatuh: Dilarang keras LONG saat candle 5m masih merah/turun tanpa konfirmasi bullish; dilarang SHORT saat candle 5m masih hijau/naik tanpa konfirmasi bearish.",
   "last_update_id": 698291210,
   "pending_order": null,
-  "active_trade": {
-    "direction": "SHORT",
-    "order_type": "LIMIT",
-    "entry_price": 71.96,
-    "tp_price": 71.36,
-    "sl_price": 71.96,
-    "initial_sl_dist": 0.23,
-    "bep_trigger_price": 71.73,
-    "bep_moved": true,
-    "entry_open_time": 1795803000000,
-    "entry_time": "28/11 01:10 WIB",
-    "reason": "Struktur LH/LL bearish, harga di bawah EMA 50/99, momentum short dominan, entry limit di 71.96."
-  },
+  "active_trade": null,
   "stats": {
-    "total_closed": 3,
+    "total_closed": 4,
     "tp_hit": 0,
     "sl_hit": 2,
-    "bep_hit": 1,
+    "bep_hit": 2,
     "cancelled_limits": 0,
     "net_points": -0.46
   }
