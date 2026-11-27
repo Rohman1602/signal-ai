@@ -11,10 +11,10 @@
     "order_type": "LIMIT",
     "entry_price": 71.96,
     "tp_price": 71.36,
-    "sl_price": 72.19,
+    "sl_price": 71.96,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 71.73,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795803000000,
     "entry_time": "28/11 01:10 WIB",
     "reason": "Struktur LH/LL bearish, harga di bawah EMA 50/99, momentum short dominan, entry limit di 71.96."
