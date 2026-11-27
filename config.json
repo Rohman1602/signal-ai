@@ -11,10 +11,10 @@
     "order_type": "LIMIT",
     "entry_price": 71.82,
     "tp_price": 71.22,
-    "sl_price": 72.05,
+    "sl_price": 71.82,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 71.59,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795800900000,
     "entry_time": "28/11 00:35 WIB",
     "reason": "Struktur 5m/15m bearish, CVD negatif, harga di bawah EMA 99. Entry pada pullback minor."
