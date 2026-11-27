@@ -35,7 +35,7 @@ def load_config():
         "strategy": (
             "1. Deteksi Rezim Pasti (ADX 14 + Chop EMA 200): Pastikan pasar TRENDING atau SIDEWAYS. "
             "2. Mode TRENDING: Wajib ikuti struktur (HH/HL untuk LONG, LH/LL untuk SHORT) dan pantulan presisi pada EMA 99 (5m/15m) atau EMA 20/21/50. "
-            "3. Mode SIDEWAYS: Hentikan EMA sebagai acuan utama; gunakan peta Support/Resistance 24 jam + SMI jenuh jual/beli + candle konfirmasi. "
+            "3. Mode SIDEWAYS (Acuan 15m -> Eksekusi 5m): Gunakan 15m sebagai acuan utama; wajib menyentuh/sangat dekat Upper atau Lower Bollinger Band 15m + SMI 15m jenuh beli/jual berbalik arah + zona S/R 24 jam, lalu eksekusi di timeframe 5m dengan candle konfirmasi. "
             "4. Anti-Pisau Jatuh: Dilarang LONG saat harga/candle masih turun tanpa konfirmasi bullish; dilarang SHORT saat harga/candle masih naik tanpa konfirmasi bearish."
         ),
         "last_update_id": 0,
@@ -159,7 +159,7 @@ def send_control_menu(cfg, header="🎛️ *PANEL KENDALI ARGON PRO*"):
             f"   TP: `${pending['tp_price']}` | SL: `${pending['sl_price']}`"
         )
     else:
-        pos_info = "📌 *STATUS POSISI:* `Kosong (Ketik pertanyaan apa saja untuk tanya AI)`"
+        pos_info = "📌 *STATUS POSISI:* `Kosong (Sideways: 15m BB+SMI -> 5m Exec)`"
 
     text = (
         f"{header}\n\n"
@@ -237,7 +237,7 @@ def process_telegram_commands(cfg):
                     "💬 *ASISTEN TANYA JAWAB AI AKTIF*\n\n"
                     "Ketik pertanyaan bebas di chat ini, misalnya:\n"
                     "• _\"Strategi apa yang sekarang dijalankan bot?\"_\n"
-                    "• _\"Area harga berapa yang sedang ditunggu untuk entry?\"_\n"
+                    "• _\"Area BB 15m dan harga berapa yang sedang ditunggu?\"_\n"
                     "• _\"Kenapa bot belum masuk posisi saat ini?\"_"
                 )
                 send_telegram(help_text)
@@ -319,6 +319,16 @@ def calc_ema_series(values, period):
     for v in values[1:]:
         ema_list.append(v * k + ema_list[-1] * (1 - k))
     return ema_list
+
+
+def calc_bb(closes, period=20, mult=2.0):
+    win = closes[-period:]
+    mid_val = sum(win) / float(period)
+    std_dev = (sum((x - mid_val) ** 2 for x in win) / float(period)) ** 0.5
+    upper = round(mid_val + mult * std_dev, 3)
+    lower = round(mid_val - mult * std_dev, 3)
+    mid = round(mid_val, 3)
+    return upper, mid, lower
 
 
 def calc_atr(highs, lows, closes, period=14):
@@ -489,7 +499,7 @@ def analyze_candle_anatomy(o, h, l, c, v, avg_v):
 
 
 def fetch_market_data():
-    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Pro/5.2'}
+    headers = {'Accept': 'application/json', 'User-Agent': 'Argon-Pro/5.3'}
 
     url_5m = "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=5m&limit=288"
     res_5m = requests.get(url_5m, headers=headers, timeout=15)
@@ -528,12 +538,7 @@ def fetch_market_data():
     atr_5m = calc_atr(highs, lows, closes, 14)
     adx_5m = calc_adx(highs, lows, closes, 14)
 
-    win20 = closes[-20:]
-    bb_mid_val = sum(win20) / 20.0
-    std_dev = (sum((x - bb_mid_val) ** 2 for x in win20) / 20.0) ** 0.5
-    bb_upper = round(bb_mid_val + 2 * std_dev, 3)
-    bb_lower = round(bb_mid_val - 2 * std_dev, 3)
-    bb_mid = round(bb_mid_val, 3)
+    bb_upper, bb_mid, bb_lower = calc_bb(closes, 20, 2.0)
     bb_width_pct = round(((bb_upper - bb_lower) / current_price) * 100, 3)
 
     smi_5m, smi_sig_5m, smi_5m_prev = calc_smi_series(highs, lows, closes, 10, 3, 3)
@@ -552,6 +557,8 @@ def fetch_market_data():
 
     struct_15m, struct_15m_label, sh_15m, sl_15m = 0.0, "TIDAK TERSEDIA", sh_5m, sl_5m
     ema20_15m, ema50_15m, ema99_15m, ema200_15m = ema20, ema50, ema99, ema200
+    bb_upper_15m, bb_mid_15m, bb_lower_15m = bb_upper, bb_mid, bb_lower
+    high_15m_recent, low_15m_recent = highs[-1], lows[-1]
     smi_15m, smi_sig_15m, smi_15m_prev = smi_5m, smi_sig_5m, smi_5m_prev
     adx_15m = adx_5m
     try:
@@ -567,6 +574,9 @@ def fetch_market_data():
             ema50_15m = round(calc_ema_series(c15, 50)[-1], 3)
             ema99_15m = round(calc_ema_series(c15, 99)[-1], 3)
             ema200_15m = round(calc_ema_series(c15, 200)[-1], 3)
+            bb_upper_15m, bb_mid_15m, bb_lower_15m = calc_bb(c15, 20, 2.0)
+            high_15m_recent = round(max(h15[-2], h15[-1]), 3)
+            low_15m_recent = round(min(l15[-2], l15[-1]), 3)
             smi_15m, smi_sig_15m, smi_15m_prev = calc_smi_series(h15, l15, c15, 10, 3, 3)
             adx_15m = calc_adx(h15, l15, c15, 14)
     except Exception:
@@ -604,6 +614,8 @@ def fetch_market_data():
         "ema9": ema9, "ema20": ema20, "ema21": ema21, "ema50": ema50, "ema99": ema99, "ema200": ema200,
         "ema20_15m": ema20_15m, "ema50_15m": ema50_15m, "ema99_15m": ema99_15m, "ema200_15m": ema200_15m,
         "bb_upper": bb_upper, "bb_mid": bb_mid, "bb_lower": bb_lower,
+        "bb_upper_15m": bb_upper_15m, "bb_mid_15m": bb_mid_15m, "bb_lower_15m": bb_lower_15m,
+        "high_15m_recent": high_15m_recent, "low_15m_recent": low_15m_recent,
         "smi": smi_5m, "smi_signal": smi_sig_5m, "smi_prev": smi_5m_prev,
         "smi_15m": smi_15m, "smi_sig_15m": smi_sig_15m, "smi_15m_prev": smi_15m_prev,
         "struct_5m": struct_5m, "struct_5m_label": struct_5m_label, "sh_5m": sh_5m, "sl_5m": sl_5m,
@@ -628,10 +640,11 @@ def fetch_market_data():
         f"  - 15M Structure: {struct_15m_label} (Swing High: ${sh_15m}, Swing Low: ${sl_15m})\n"
         f"  - 1H Structure: {struct_1h_label}\n"
         f"Key EMAs -> 5M EMA99: ${ema99} | 15M EMA99: ${ema99_15m} | 5M EMA20: ${ema20} | 5M EMA50: ${ema50} | 5M EMA200: ${ema200}\n"
-        f"Bollinger Bands (5M) -> Upper: ${bb_upper} | Mid: ${bb_mid} | Lower: ${bb_lower}\n"
-        f"Stochastic Momentum Index (SMI) -> 5M: {smi_5m} (prev {smi_5m_prev}, sig {smi_sig_5m}) | 15M: {smi_15m} (prev {smi_15m_prev}, sig {smi_sig_15m})\n"
+        f"Bollinger Bands 15M (Primary Sideways Filter) -> Upper: ${bb_upper_15m} | Mid: ${bb_mid_15m} | Lower: ${bb_lower_15m} (Recent 15m High: ${high_15m_recent}, Low: ${low_15m_recent})\n"
+        f"Bollinger Bands 5M -> Upper: ${bb_upper} | Mid: ${bb_mid} | Lower: ${bb_lower}\n"
+        f"Stochastic Momentum Index (SMI) -> 15M (Primary Sideways): {smi_15m} (prev {smi_15m_prev}, sig {smi_sig_15m}) | 5M: {smi_5m} (prev {smi_5m_prev}, sig {smi_sig_5m})\n"
         f"Spot Order Flow (CVD) -> 5m: ${cvd_5m:+,.0f} | 15m: ${cvd_15m:+,.0f} | 1h: ${cvd_1h:+,.0f}\n"
-        f"Candles -> Prev2: {json.dumps(prev2_candle_anatomy)} | PrevClosed: {json.dumps(prev_candle_anatomy)} | Current: {json.dumps(curr_candle_anatomy)}\n"
+        f"5M Execution Candles -> Prev2: {json.dumps(prev2_candle_anatomy)} | PrevClosed: {json.dumps(prev_candle_anatomy)} | Current: {json.dumps(curr_candle_anatomy)}\n"
         f"Last 8 Candles (5m): {json.dumps(last_candles)}"
     )
     return current_price, summary, metrics
@@ -652,10 +665,16 @@ def evaluate_professional_setup(m, cfg):
     is_choppy_ema200 = crosses >= 3
     if is_choppy_ema200 or (adx_5m < 21.0 and adx_15m < 22.0) or (m["struct_5m"] == 0.0 and m["struct_15m"] == 0.0):
         regime = "SIDEWAYS"
-        regime_reason = f"SIDEWAYS (ADX 5m={adx_5m}, 15m={adx_15m}, potong EMA200 {crosses}x/3jam) -> Nonaktifkan EMA sebagai pemicu utama, gunakan S/R 24J + SMI + Candle Konfirmasi."
+        regime_reason = (
+            f"SIDEWAYS (ADX 5m={adx_5m}, 15m={adx_15m}, potong EMA200 {crosses}x/3jam) -> "
+            f"Acuan utama 15m (BB Upper/Lower 15m + SMI 15m jenuh + S/R 24J), eksekusi konfirmasi di 5m."
+        )
     else:
         regime = "TRENDING"
-        regime_reason = f"TRENDING (ADX 5m={adx_5m}, 15m={adx_15m}, 5M: {m['struct_5m_label']}, 15M: {m['struct_15m_label']}) -> Gunakan Struktur LH/LL atau HH/HL + Pantulan EMA 99 / Klaster EMA."
+        regime_reason = (
+            f"TRENDING (ADX 5m={adx_5m}, 15m={adx_15m}, 5M: {m['struct_5m_label']}, 15M: {m['struct_15m_label']}) -> "
+            f"Gunakan Struktur LH/LL atau HH/HL + Pantulan EMA 99 / Klaster EMA."
+        )
 
     if atr_5m > 0.36 or max(c_curr["range"], c_prev["range"]) > 0.45:
         return {
@@ -670,12 +689,13 @@ def evaluate_professional_setup(m, cfg):
             "suggested_limit_short": price
         }
 
-    bullish_confirmed = (
+    # Konfirmasi candle pembalikan di timeframe 5m (Anti-Pisau Jatuh)
+    bullish_confirmed_5m = (
         (c_prev["dir"] == "BULLISH" and c_prev["body_pct"] >= 35 and c_curr["close"] >= c_prev["open"]) or
         (c_prev["lower_wick_pct"] >= 42 and c_curr["dir"] == "BULLISH") or
         (c_curr["dir"] == "BULLISH" and c_curr["body_pct"] >= 50 and c_curr["close"] > c_prev["high"])
     )
-    bearish_confirmed = (
+    bearish_confirmed_5m = (
         (c_prev["dir"] == "BEARISH" and c_prev["body_pct"] >= 35 and c_curr["close"] <= c_prev["open"]) or
         (c_prev["upper_wick_pct"] >= 42 and c_curr["dir"] == "BEARISH") or
         (c_curr["dir"] == "BEARISH" and c_curr["body_pct"] >= 50 and c_curr["close"] < c_prev["low"])
@@ -693,24 +713,50 @@ def evaluate_professional_setup(m, cfg):
     zone_tol = max(0.18, round(atr_5m * 1.25, 3))
 
     if regime == "SIDEWAYS":
-        strategy_mode = "SIDEWAYS_SR_24H_SMI"
-        near_major_sup = any(abs(min(price, c_prev["low"], c_curr["low"]) - sup) <= zone_tol for sup in sup_levels) or (c_prev["low"] <= m["bb_lower"] * 1.001)
-        near_major_res = any(abs(max(price, c_prev["high"], c_curr["high"]) - res) <= zone_tol for res in res_levels) or (c_prev["high"] >= m["bb_upper"] * 0.999)
+        strategy_mode = "SIDEWAYS_15M_BB_SMI_5M_EXEC"
+        # Acuan utama di Timeframe 15 Menit:
+        # 1. Harga menyentuh / sangat dekat dengan Bollinger Band 15m
+        bb15_half_span = max((m["bb_upper_15m"] - m["bb_lower_15m"]) / 2.0, 0.20)
+        bb15_prox_tol = min(0.18, max(0.08, round(bb15_half_span * 0.14, 3)))
 
-        smi_bull_turn = (m["smi"] <= -25 or m["smi_15m"] <= -25) and (m["smi"] > m["smi_prev"] or m["smi"] > m["smi_signal"])
-        smi_bear_turn = (m["smi"] >= 25 or m["smi_15m"] >= 25) and (m["smi"] < m["smi_prev"] or m["smi"] < m["smi_signal"])
+        lowest_15m_touch = min(price, m["low_15m_recent"], c_prev["low"], c_curr["low"])
+        highest_15m_touch = max(price, m["high_15m_recent"], c_prev["high"], c_curr["high"])
 
-        if near_major_sup and smi_bull_turn and bullish_confirmed:
+        near_15m_bb_lower = lowest_15m_touch <= (m["bb_lower_15m"] + bb15_prox_tol)
+        near_15m_bb_upper = highest_15m_touch >= (m["bb_upper_15m"] - bb15_prox_tol)
+
+        # 2. SMI 15m berada di area jenuh jual / jenuh beli yang potensial & berbalik arah
+        smi15_buy_ready = (m["smi_15m"] <= -25.0) and (m["smi_15m"] > m["smi_15m_prev"] or m["smi_15m"] > m["smi_sig_15m"])
+        smi15_sell_ready = (m["smi_15m"] >= 25.0) and (m["smi_15m"] < m["smi_15m_prev"] or m["smi_15m"] < m["smi_sig_15m"])
+
+        # 3. Didukung area Support/Resistance 24 jam (tetap mempertahankan aturan sebelumnya)
+        near_major_sup = any(abs(lowest_15m_touch - sup) <= zone_tol for sup in sup_levels)
+        near_major_res = any(abs(highest_15m_touch - res) <= zone_tol for res in res_levels)
+
+        # 4. Eksekusi wajib terkonfirmasi candle 5m agar mendapat harga terbaik & anti-pisau jatuh
+        if near_15m_bb_lower and smi15_buy_ready and near_major_sup and bullish_confirmed_5m:
             allow_long = True
-            setup_notes.append(f"SIDEWAYS LONG: Harga memantul dari area Support kuat 24J/BB Lower + SMI jenuh jual ({m['smi']}) berbalik naik + Candle konfirmasi bullish.")
+            setup_notes.append(
+                f"SIDEWAYS 15m->5m LONG: Menyentuh/dekat BB Lower 15m (${m['bb_lower_15m']}) + "
+                f"SMI 15m jenuh jual ({m['smi_15m']}) berbalik naik + Sup 24J + Konfirmasi candle 5m."
+            )
         else:
-            setup_notes.append(f"SIDEWAYS LONG belum siap (Sup24J={near_major_sup}, SMI_bull={smi_bull_turn}, CandleBull={bullish_confirmed}).")
+            setup_notes.append(
+                f"SIDEWAYS LONG belum lengkap [15m BB_Low={near_15m_bb_lower} (${m['bb_lower_15m']}), "
+                f"SMI15_Buy={smi15_buy_ready} ({m['smi_15m']}), Sup24J={near_major_sup}, Exec5m_Bull={bullish_confirmed_5m}]."
+            )
 
-        if near_major_res and smi_bear_turn and bearish_confirmed:
+        if near_15m_bb_upper and smi15_sell_ready and near_major_res and bearish_confirmed_5m:
             allow_short = True
-            setup_notes.append(f"SIDEWAYS SHORT: Harga tertolak di Resistance kuat 24J/BB Upper + SMI jenuh beli ({m['smi']}) berbalik turun + Candle konfirmasi bearish.")
+            setup_notes.append(
+                f"SIDEWAYS 15m->5m SHORT: Menyentuh/dekat BB Upper 15m (${m['bb_upper_15m']}) + "
+                f"SMI 15m jenuh beli ({m['smi_15m']}) berbalik turun + Res 24J + Konfirmasi candle 5m."
+            )
         else:
-            setup_notes.append(f"SIDEWAYS SHORT belum siap (Res24J={near_major_res}, SMI_bear={smi_bear_turn}, CandleBear={bearish_confirmed}).")
+            setup_notes.append(
+                f"SIDEWAYS SHORT belum lengkap [15m BB_Up={near_15m_bb_upper} (${m['bb_upper_15m']}), "
+                f"SMI15_Sell={smi15_sell_ready} ({m['smi_15m']}), Res24J={near_major_res}, Exec5m_Bear={bearish_confirmed_5m}]."
+            )
 
     else:
         strategy_mode = "TREND_STRUCTURE_EMA99"
@@ -727,20 +773,20 @@ def evaluate_professional_setup(m, cfg):
         )
 
         if (m["struct_5m"] > 0 or m["struct_15m"] > 0) and m["struct_5m"] >= 0 and m["struct_15m"] >= 0:
-            if (touched_ema99 or touched_trend_ema) and price >= m["ema99"] * 0.9985 and bullish_confirmed:
+            if (touched_ema99 or touched_trend_ema) and price >= m["ema99"] * 0.9985 and bullish_confirmed_5m:
                 allow_long = True
                 tag_ema = "EMA 99 (5m/15m)" if touched_ema99 else "EMA Tren (20/21/50)"
-                setup_notes.append(f"TREND LONG: Struktur naik ({m['struct_5m_label']}) + pullback menyentuh {tag_ema} + candle konfirmasi bullish.")
+                setup_notes.append(f"TREND LONG: Struktur naik ({m['struct_5m_label']}) + pullback menyentuh {tag_ema} + candle konfirmasi 5m bullish.")
             else:
-                setup_notes.append(f"TREND LONG menunggu pantulan EMA 99/20/50 & candle bullish (TouchedEMA={touched_trend_ema}, CandleBull={bullish_confirmed}).")
+                setup_notes.append(f"TREND LONG menunggu pantulan EMA 99/20/50 & candle 5m bullish (TouchedEMA={touched_trend_ema}, CandleBull={bullish_confirmed_5m}).")
 
         if (m["struct_5m"] < 0 or m["struct_15m"] < 0) and m["struct_5m"] <= 0 and m["struct_15m"] <= 0:
-            if (touched_ema99 or touched_trend_ema) and price <= m["ema99"] * 1.0015 and bearish_confirmed:
+            if (touched_ema99 or touched_trend_ema) and price <= m["ema99"] * 1.0015 and bearish_confirmed_5m:
                 allow_short = True
                 tag_ema = "EMA 99 (5m/15m)" if touched_ema99 else "EMA Tren (20/21/50)"
-                setup_notes.append(f"TREND SHORT: Struktur turun ({m['struct_5m_label']}) + pullback naik menyentuh {tag_ema} + candle konfirmasi bearish.")
+                setup_notes.append(f"TREND SHORT: Struktur turun ({m['struct_5m_label']}) + pullback naik menyentuh {tag_ema} + candle konfirmasi 5m bearish.")
             else:
-                setup_notes.append(f"TREND SHORT menunggu penolakan EMA 99/20/50 & candle bearish (TouchedEMA={touched_trend_ema}, CandleBear={bearish_confirmed}).")
+                setup_notes.append(f"TREND SHORT menunggu penolakan EMA 99/20/50 & candle 5m bearish (TouchedEMA={touched_trend_ema}, CandleBear={bearish_confirmed_5m}).")
 
     min_room = round(tp_dist * 0.65, 3)
     if allow_long:
@@ -755,8 +801,12 @@ def evaluate_professional_setup(m, cfg):
             setup_notes.append(f"SHORT dibatalkan: terhalang Support kuat di ${blocking_sup[0]} sebelum TP -{tp_dist}.")
 
     prefer_limit = max(c_curr["range"], c_prev["range"]) > 0.25
-    suggested_limit_long = round(min(price - 0.04, max(c_curr["mid"], m["ema99"], m["ema21"])), 3)
-    suggested_limit_short = round(max(price + 0.04, min(c_curr["mid"], m["ema99"], m["ema21"])), 3)
+    if regime == "SIDEWAYS":
+        suggested_limit_long = round(min(price - 0.04, max(c_curr["mid"], m["bb_lower_15m"])), 3)
+        suggested_limit_short = round(max(price + 0.04, min(c_curr["mid"], m["bb_upper_15m"])), 3)
+    else:
+        suggested_limit_long = round(min(price - 0.04, max(c_curr["mid"], m["ema99"], m["ema21"])), 3)
+        suggested_limit_short = round(max(price + 0.04, min(c_curr["mid"], m["ema99"], m["ema21"])), 3)
 
     return {
         "regime": regime,
@@ -1057,8 +1107,8 @@ def answer_user_question_with_ai(question, market_summary, eval_data, metrics, c
     {market_summary}
 
     INSTRUKSI JAWABAN:
-    1. Jawab langsung pertanyaan pengguna dengan merujuk pada angka harga nyata (harga SOL saat ini, area Support/Resistance 24 jam, EMA 99 5m/15m, atau SMI/ADX).
-    2. Jelaskan dengan spesifik skenario harga dan konfirmasi candle apa yang sedang ditunggu bot sebelum mengeksekusi order berikutnya.
+    1. Jawab langsung pertanyaan pengguna dengan merujuk pada angka harga nyata (harga SOL saat ini, Bollinger Band Upper/Lower 15m, SMI 15m, area Support/Resistance 24 jam, atau EMA 99 5m/15m).
+    2. Jelaskan dengan spesifik skenario harga dan konfirmasi candle 5m apa yang sedang ditunggu bot sebelum mengeksekusi order berikutnya.
     3. Gunakan format poin-poin singkat yang rapi (maksimal 220 kata) tanpa memakai simbol bintang ganda atau garis bawah yang rumit.
     """
 
@@ -1092,10 +1142,8 @@ def answer_user_question_with_ai(question, market_summary, eval_data, metrics, c
         f"• *Status Bot:* `{bot_state}` | *Rezim Pasar:* `{eval_data['regime']}`\n"
         f"• *Strategi Berjalan:* `{eval_data['strategy_mode']}`\n"
         f"• *Harga SOL Sekarang:* `${metrics['price']}`\n"
-        f"• *Area Kunci yang Dipantau:*\n"
-        f"  - 24J High: `${metrics['day_map']['day_high']}` | 24J Low: `${metrics['day_map']['day_low']}`\n"
-        f"  - EMA 99 (5m): `${metrics['ema99']}` | EMA 99 (15m): `${metrics['ema99_15m']}`\n"
-        f"  - SMI 5m: `{metrics['smi']}` | ADX 5m: `{metrics['adx_5m']}`\n"
+        f"• *Acuan 15m (Sideways):* BB Upper `${metrics['bb_upper_15m']}` | BB Lower `${metrics['bb_lower_15m']}` | SMI 15m `{metrics['smi_15m']}`\n"
+        f"• *Area Kunci 24J:* High `${metrics['day_map']['day_high']}` | Low `${metrics['day_map']['day_low']}` | EMA99 15m `${metrics['ema99_15m']}`\n"
         f"• *Kondisi Ditunggu:* {eval_data['setup_note']}"
     )
 
@@ -1104,10 +1152,10 @@ def build_prompt(current_price, market_summary, eval_data, cfg):
     tp_val = cfg['tp']
     sl_val = cfg['sl']
     return f"""
-    You are a disciplined, sniper-grade institutional crypto futures trader for SOL/USDT (5m & 15m).
-    You NEVER jump into the market blindly. You inspect the 24-hour wide chart map (288 candles 5m) to locate major Support/Resistance zones and EMA 99 levels, and you strictly enforce market regime separation.
+    You are a disciplined, sniper-grade institutional crypto futures trader for SOL/USDT (15m primary setup, 5m execution).
+    You NEVER jump into the market blindly.
 
-    LIVE DATA (24H WIDE CHART + MTF):
+    LIVE DATA (24H WIDE CHART + 15M + 5M):
     {market_summary}
 
     REGIME & QUANT DIAGNOSTICS:
@@ -1115,15 +1163,15 @@ def build_prompt(current_price, market_summary, eval_data, cfg):
     - Strategy Mode: {eval_data['strategy_mode']}
     - Quantitative Gate Evaluation: {eval_data['setup_note']}
     - Permissions: allow_long={eval_data['allow_long']}, allow_short={eval_data['allow_short']}
-    - Suggested Limit Levels: LONG=${eval_data['suggested_limit_long']} | SHORT=${eval_data['suggested_limit_short']}
+    - Suggested 5M Execution Limit Levels: LONG=${eval_data['suggested_limit_long']} | SHORT=${eval_data['suggested_limit_short']}
 
     USER STRATEGY: {cfg['strategy']}
 
     STRICT PROFESSIONAL RULES:
     1. NEVER output LONG if allow_long=false; NEVER output SHORT if allow_short=false.
-    2. NEVER enter LONG while price/candles are still falling without a confirmed bullish reversal/bounce candle; NEVER enter SHORT while price/candles are rising without a confirmed bearish rejection candle.
-    3. If Confirmed Regime is SIDEWAYS (or price is chopping across EMA 200), DO NOT use EMA as primary trigger—use 24H Support/Resistance zones + Stochastic Momentum Index (SMI) oversold/overbought turn + candle confirmation.
-    4. If Confirmed Regime is TRENDING, strictly follow trend structure (HH/HL or LH/LL) and look for high-probability bounces off EMA 99 (5m/15m) or EMA 20/21/50 with clear room for TP +{tp_val} and SL {sl_val}.
+    2. NEVER enter LONG while 5m price/candles are still falling without a confirmed bullish reversal/bounce candle; NEVER enter SHORT while 5m price/candles are rising without a confirmed bearish rejection candle.
+    3. If Confirmed Regime is SIDEWAYS, use 15-minute timeframe as primary setup (price touching/very close to 15M Upper/Lower Bollinger Band + 15M SMI oversold/overbought turn + 24H S/R zone), and execute on 5-minute timeframe for optimal entry price toward TP +{tp_val} / SL {sl_val}.
+    4. If Confirmed Regime is TRENDING, strictly follow trend structure (HH/HL or LH/LL) and look for high-probability bounces off EMA 99 (5m/15m) or EMA 20/21/50 with 5m candle confirmation.
 
     Output strictly valid compact JSON (no markdown fences, max 16 words per field):
     {{
@@ -1132,8 +1180,8 @@ def build_prompt(current_price, market_summary, eval_data, cfg):
       "entry_price": <number>,
       "market_regime": "{eval_data['regime']}",
       "active_strategy": "{eval_data['strategy_mode']}",
-      "key_zone_24h": "<Area kunci 24 jam / EMA 99 yang diuji>",
-      "candle_confirmation": "<Konfirmasi candle pembalikan/pantulan>",
+      "key_zone_24h": "<Area BB 15m / S&R 24J / EMA 99 yang diuji>",
+      "candle_confirmation": "<Konfirmasi candle eksekusi di timeframe 5m>",
       "anticipation": "<Rencana antisipasi jika level tembus / +1R BEP>",
       "reasoning": "<Penjelasan profesional singkat Bahasa Indonesia>"
     }}
@@ -1159,8 +1207,8 @@ def local_quant_fallback(m, eval_data, cfg):
         "entry_price": entry_p,
         "market_regime": eval_data["regime"],
         "active_strategy": eval_data["strategy_mode"],
-        "key_zone_24h": f"24H H:${m['day_map']['day_high']} L:${m['day_map']['day_low']} | EMA99 5m:${m['ema99']} 15m:${m['ema99_15m']}",
-        "candle_confirmation": f"Prev: {m['prev_candle']['pattern']} | Curr: {m['curr_candle']['pattern']}",
+        "key_zone_24h": f"15M BB[${m['bb_lower_15m']}-${m['bb_upper_15m']}] | SMI15m:{m['smi_15m']} | 24H[${m['day_map']['day_low']}-${m['day_map']['day_high']}]",
+        "candle_confirmation": f"5m Prev: {m['prev_candle']['pattern']} | Curr: {m['curr_candle']['pattern']}",
         "anticipation": f"Jika menembus balik level kunci, biarkan SL -{cfg['sl']} bekerja; jika tercapai +{cfg['sl']}, geser SL ke entry.",
         "reasoning": eval_data["setup_note"]
     }
@@ -1254,7 +1302,7 @@ if __name__ == "__main__":
 
                 reason = ai_data.get("reasoning", eval_data["setup_note"])
                 anticipation = ai_data.get("anticipation", "Jika level kunci ditembus balik, biarkan SL bekerja; saat +1R pindah SL ke entry.")
-                key_zone = ai_data.get("key_zone_24h", f"24H H:${metrics['day_map']['day_high']} L:${metrics['day_map']['day_low']}")
+                key_zone = ai_data.get("key_zone_24h", f"15M BB[${metrics['bb_lower_15m']}-${metrics['bb_upper_15m']}] | 24H H:${metrics['day_map']['day_high']}")
                 candle_conf = ai_data.get("candle_confirmation", f"{metrics['prev_candle']['pattern']}")
 
                 if sig in ["LONG", "SHORT"]:
@@ -1287,14 +1335,14 @@ if __name__ == "__main__":
                             "reason": reason
                         }
                         msg = (
-                            f"🎯 *SINYAL SNIPER LIMIT: {sig} LIMIT*\n"
+                            f"🎯 *SINYAL SNIPER LIMIT (5M EXEC): {sig} LIMIT*\n"
                             f"🤖 Engine: `{used_model}` | Rezim: `{eval_data['regime']}`\n"
                             f"🧭 Strategi Aktif: `{eval_data['strategy_mode']}`\n"
                             f"⚙️ Eksekusi: `{status_trade}`\n\n"
-                            f"• *Harga Market:* `${price}` | *Pasang Limit:* `${entry_p}`\n"
+                            f"• *Harga Market:* `${price}` | *Pasang Limit 5m:* `${entry_p}`\n"
                             f"• *Take Profit:* `${tp_price}` (`+{tp_dist} pts`) | *Stop Loss:* `${sl_price}` (`-{sl_dist} pts`)\n"
-                            f"• *Area Kunci 24J / EMA99:* {key_zone}\n"
-                            f"• *Konfirmasi Candle:* {candle_conf}\n\n"
+                            f"• *Acuan 15m / 24J:* {key_zone}\n"
+                            f"• *Konfirmasi Candle 5m:* {candle_conf}\n\n"
                             f"🛡️ *Antisipasi:* {anticipation}\n"
                             f"💡 *Analisis:* {reason}"
                         )
@@ -1314,14 +1362,14 @@ if __name__ == "__main__":
                             "reason": reason
                         }
                         msg = (
-                            f"🚨 *SINYAL SNIPER TERKONFIRMASI: {sig}*\n"
+                            f"🚨 *SINYAL SNIPER TERKONFIRMASI (5M EXEC): {sig}*\n"
                             f"🤖 Engine: `{used_model}` | Rezim: `{eval_data['regime']}`\n"
                             f"🧭 Strategi Aktif: `{eval_data['strategy_mode']}`\n"
                             f"⚙️ Eksekusi: `{status_trade}`\n\n"
-                            f"• *Entry:* `${entry_p}` | *TP:* `${tp_price}` (`+{tp_dist} pts`) | *SL:* `${sl_price}` (`-{sl_dist} pts`)\n"
+                            f"• *Entry 5m:* `${entry_p}` | *TP:* `${tp_price}` (`+{tp_dist} pts`) | *SL:* `${sl_price}` (`-{sl_dist} pts`)\n"
                             f"• *Target 1:1 Pindah SL:* `${bep_trigger}`\n"
-                            f"• *Area Kunci 24J / EMA99:* {key_zone}\n"
-                            f"• *Konfirmasi Candle:* {candle_conf}\n\n"
+                            f"• *Acuan 15m / 24J:* {key_zone}\n"
+                            f"• *Konfirmasi Candle 5m:* {candle_conf}\n\n"
                             f"🛡️ *Antisipasi:* {anticipation}\n"
                             f"💡 *Analisis:* {reason}"
                         )
@@ -1330,11 +1378,11 @@ if __name__ == "__main__":
                 elif is_manual_scan:
                     pause_note = " *(Status Bot: PAUSED)*" if config.get("bot_paused", False) else ""
                     msg = (
-                        f"⏸️ *STATUS: WAIT (MENUNGGU AREA KUNCI & KONFIRMASI)*{pause_note}\n"
+                        f"⏸️ *STATUS: WAIT (MENUNGGU ACUAN 15M & EKSEKUSI 5M)*{pause_note}\n"
                         f"🤖 Engine: `{used_model}` | Rezim: `{eval_data['regime']}`\n"
-                        f"💲 Harga SOL: `${price}` | ADX 5m: `{metrics['adx_5m']}` | Chop EMA200: `{metrics['ema200_crosses_3h']}x`\n"
-                        f"🗺️ Peta 24J: High `${metrics['day_map']['day_high']}` | Mid `${metrics['day_map']['day_mid']}` | Low `${metrics['day_map']['day_low']}`\n"
-                        f"📏 EMA 99: 5m `${metrics['ema99']}` | 15m `${metrics['ema99_15m']}` | SMI 5m: `{metrics['smi']}`\n\n"
+                        f"💲 Harga SOL: `${price}` | ADX 5m/15m: `{metrics['adx_5m']}` / `{metrics['adx_15m']}`\n"
+                        f"📐 Acuan 15m: BB Upper `${metrics['bb_upper_15m']}` | BB Lower `${metrics['bb_lower_15m']}` | SMI 15m `{metrics['smi_15m']}`\n"
+                        f"🗺️ Peta 24J: High `${metrics['day_map']['day_high']}` | Low `${metrics['day_map']['day_low']}` | EMA99 15m `${metrics['ema99_15m']}`\n\n"
                         f"🔍 *Evaluasi Sniper:* {eval_data['setup_note']}\n"
                         f"💡 *Kesimpulan:* {reason}"
                     )
