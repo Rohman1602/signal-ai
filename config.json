@@ -11,10 +11,10 @@
     "order_type": "LIMIT",
     "entry_price": 71.2,
     "tp_price": 70.6,
-    "sl_price": 71.43,
+    "sl_price": 71.2,
     "initial_sl_dist": 0.23,
     "bep_trigger_price": 70.97,
-    "bep_moved": false,
+    "bep_moved": true,
     "entry_open_time": 1795851000000,
     "entry_time": "28/11 14:30 WIB",
     "reason": "15m downtrend persists; price is below EMA 99. Shorting pullbacks to EMA resistance."
