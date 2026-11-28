@@ -21,7 +21,16 @@
   },
   "strategy": "1. Deteksi Rezim Pasti (ADX 14 + Chop EMA 200): TRENDING atau SIDEWAYS. 2. Mode TRENDING: Struktur HH/HL atau LH/LL + pantulan EMA 99 (5m/15m) atau EMA 20/21/50 + SMI 5m jenuh/koreksi wajar berbalik arah. 3. Mode SIDEWAYS: Acuan 15m (BB 15m + SMI 15m jenuh berbalik arah + S/R 24J), eksekusi di 5m. 4. Validasi Tutup Candle 5m & 15m: Candle tutup terakhir 5m dan 15m tidak boleh berlawanan dengan arah entry.",
   "last_update_id": 698291213,
-  "pending_order": null,
+  "pending_order": {
+    "direction": "SHORT",
+    "limit_price": 70.58,
+    "tp_price": 69.98,
+    "sl_price": 70.81,
+    "initial_sl_dist": 0.23,
+    "created_open_time": 1795877100000,
+    "created_time": "28/11 21:45 WIB",
+    "reason": "Structure is bearish on both 5M/15M timeframes. Price is trading below all key EMAs (5M/15M). SMI 5M is trending down and BB 5M shows room for expansion to the downside. Short entry triggered by pullback to EMA20/50 confluence."
+  },
   "active_trade": null,
   "stats": {
     "total_closed": 0,
