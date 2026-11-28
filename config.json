@@ -19,7 +19,7 @@
     "min_bb_width_pct": 0.0,
     "custom_extra_rules": []
   },
-  "strategy": "1. Deteksi Rezim Pasti (ADX 14 + Chop EMA 200): Pastikan pasar TRENDING atau SIDEWAYS. 2. Mode TRENDING: Ikuti struktur (HH/HL untuk LONG, LH/LL untuk SHORT) + pantulan EMA 99 (5m/15m) atau klaster EMA 20/21/50 + SMI 5m di area jenuh/koreksi wajar berbalik arah. 3. Mode SIDEWAYS (Acuan 15m -> Eksekusi 5m): Gunakan timeframe 15m sebagai acuan utama (menyentuh/sangat dekat Upper atau Lower Bollinger Band 15m + SMI 15m jenuh berbalik arah + zona S/R 24 jam), lalu eksekusi di timeframe 5m. 4. Validasi Penutupan Candle 5m & 15m: Candle tertutup terakhir di 5m dan 15m tidak boleh berlawanan dengan arah entry.",
+  "strategy": "1. Deteksi Rezim Pasti (ADX 14 + Chop EMA 200): TRENDING atau SIDEWAYS. 2. Mode TRENDING: Struktur HH/HL atau LH/LL + pantulan EMA 99 (5m/15m) atau EMA 20/21/50 + SMI 5m jenuh/koreksi wajar berbalik arah. 3. Mode SIDEWAYS: Acuan 15m (BB 15m + SMI 15m jenuh berbalik arah + S/R 24J), eksekusi di 5m. 4. Validasi Tutup Candle 5m & 15m: Candle tutup terakhir 5m dan 15m tidak boleh berlawanan dengan arah entry.",
   "last_update_id": 0,
   "pending_order": null,
   "active_trade": null,
