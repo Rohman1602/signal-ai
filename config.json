@@ -20,7 +20,7 @@
     "custom_extra_rules": []
   },
   "strategy": "1. Deteksi Rezim Pasti (ADX 14 + Chop EMA 200): TRENDING atau SIDEWAYS. 2. Mode TRENDING: Struktur HH/HL atau LH/LL + pantulan EMA 99 (5m/15m) atau EMA 20/21/50 + SMI 5m jenuh/koreksi wajar berbalik arah. 3. Mode SIDEWAYS: Acuan 15m (BB 15m + SMI 15m jenuh berbalik arah + S/R 24J), eksekusi di 5m. 4. Validasi Tutup Candle 5m & 15m: Candle tutup terakhir 5m dan 15m tidak boleh berlawanan dengan arah entry.",
-  "last_update_id": 698291212,
+  "last_update_id": 698291213,
   "pending_order": null,
   "active_trade": null,
   "stats": {
